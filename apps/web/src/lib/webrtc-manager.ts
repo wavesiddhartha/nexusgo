@@ -405,7 +405,7 @@ export class WebRTCManager {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: this.urlB64ToUint8(this.vapidKey),
+        applicationServerKey: this.urlB64ToUint8(this.vapidKey) as any,
       });
       this.pushSub = sub;
       this.sig({ type: 'push-subscribe', from: this.myId, payload: sub.toJSON() });

@@ -3,9 +3,10 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNexusStore, selectPeerList } from '@/store/nexus.store';
+import type { RemotePeer } from '@/lib/webrtc-manager';
 import { useCanvasDimensions } from '@/hooks';
 import { cn } from '@/lib/utils';
-import type { RemotePeer } from '@/lib/webrtc-manager';
+import { toast } from 'sonner';
 
 const POSITIONS: [number, number][] = [
   [0.27, 0.27], [0.73, 0.25], [0.79, 0.68], [0.21, 0.70],
@@ -26,6 +27,7 @@ export function DiscoverScreen() {
   const setActivePeer = useNexusStore(s => s.setActivePeer);
   const setScreen     = useNexusStore(s => s.setScreen);
   const sendMessage   = useNexusStore(s => s.sendMessage);
+  const sendFile      = useNexusStore(s => s.sendFile);
   const myName        = useNexusStore(s => s.myName);
 
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -89,8 +91,58 @@ export function DiscoverScreen() {
     if (!v || !selectedId) return;
     if (!selectedPeer?.connected) return;
     sendMessage(selectedId, v);
+    toast.success(`Message sent to ${selectedPeer.name} ✓`);
     setMsgVal('');
   }, [msgVal, selectedId, selectedPeer, sendMessage]);
+
+  const handleDirectShare = useCallback(async (type: string) => {
+    if (!selectedId || !selectedPeer?.connected) {
+      toast.error('Select a connected peer first');
+      return;
+    }
+    
+    if (type === 'File' || type === 'Photo') {
+      const el = document.createElement('input');
+      el.type = 'file';
+      if (type === 'Photo') el.accept = 'image/*';
+      el.onchange = async () => {
+        const file = el.files?.[0];
+        if (file) {
+          toast(`Sending ${file.name} to ${selectedPeer.name}…`);
+          try {
+            await sendFile(selectedId, file);
+            toast.success(`Sent successfully to ${selectedPeer.name} ✓`);
+          } catch (e: any) {
+            toast.error(e.message || 'Transfer failed');
+          }
+        }
+      };
+      el.click();
+    } else if (type === 'Link') {
+      const url = window.prompt(`Share a link with ${selectedPeer.name}:`);
+      if (url?.trim()) {
+        sendMessage(selectedId, url.trim());
+        toast.success(`Shared link with ${selectedPeer.name} ✓`);
+      }
+    } else if (type === 'Location') {
+      if (!navigator.geolocation) {
+        toast.error('Geolocation is not supported by your browser');
+        return;
+      }
+      toast('Fetching your location…');
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude } = pos.coords;
+          const locMsg = `My Location: https://maps.google.com/?q=${latitude},${longitude}`;
+          sendMessage(selectedId, locMsg);
+          toast.success(`Shared location with ${selectedPeer.name} ✓`);
+        },
+        (err) => {
+          toast.error('Failed to get location: ' + err.message);
+        }
+      );
+    }
+  }, [selectedId, selectedPeer, sendFile, sendMessage]);
 
   return (
     <div className="flex flex-col h-full" style={{ background: '#fafaf9' }}>
@@ -125,7 +177,7 @@ export function DiscoverScreen() {
                 <div
                   key={ri}
                   className="absolute rounded-full border border-black/[0.08] pointer-events-none"
-                  style={{ width: 54, height: 54, animation: `ring-pulse 3.8s ease-out ${delay}s infinite` }}
+                  style={{ left: '50%', top: '50%', width: 54, height: 54, animation: `ring-pulse 3.8s ease-out ${delay}s infinite` }}
                 />
               ))}
               <div className="w-[48px] h-[48px] rounded-full bg-[#080808] text-white flex items-center justify-center text-[13px] font-medium relative z-10 shadow-[0_2px_16px_rgba(8,8,8,0.18)]">
@@ -159,6 +211,8 @@ export function DiscoverScreen() {
                     <div
                       className="absolute rounded-full border border-black/[0.04] pointer-events-none"
                       style={{ 
+                        left: '50%',
+                        top: '50%',
                         width: 46, 
                         height: 46, 
                         animation: `ring-pulse 4.8s ease-out ${(i * 0.55) % 2.4}s infinite` 
@@ -282,7 +336,7 @@ export function DiscoverScreen() {
         </div>
 
         {/* Chips */}
-        <div className="flex gap-2 mb-3 overflow-x-auto pb-0.5">
+        <div className="flex gap-2 mb-3 overflow-x-auto pb-0.5 select-none">
           {[
             { label: 'File',     path: <><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></> },
             { label: 'Photo',    path: <><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></> },
@@ -291,7 +345,7 @@ export function DiscoverScreen() {
           ].map(({ label, path }) => (
             <button
               key={label}
-              onClick={() => selectedId && setScreen('chat')}
+              onClick={() => handleDirectShare(label)}
               className="flex items-center gap-1.5 shrink-0 px-3 py-[6px] rounded-full border border-[#e4e4e0] bg-white text-[11px] text-[#6a6a64] hover:border-[#a0a09a] hover:text-black active:border-black active:text-black transition-colors duration-150"
             >
               <svg className="w-[11px] h-[11px] shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">

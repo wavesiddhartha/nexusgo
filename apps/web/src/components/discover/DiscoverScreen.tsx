@@ -54,11 +54,23 @@ export function DiscoverScreen() {
       line.setAttribute('x1', String(cx)); line.setAttribute('y1', String(cy));
       line.setAttribute('x2', String(nx)); line.setAttribute('y2', String(ny));
       const sel = p.id === selectedId;
-      line.setAttribute('stroke', sel ? 'rgba(8,8,8,0.20)' : '#e8e8e4');
-      line.setAttribute('stroke-width', sel ? '0.8' : '0.5');
-      if (sel) {
-        line.setAttribute('stroke-dasharray', '4 4');
+      const connected = p.connected;
+      if (!connected && sel) {
+        line.setAttribute('stroke', '#eab308');
+        line.setAttribute('stroke-width', '1.0');
+        line.setAttribute('stroke-dasharray', '5 5');
         line.classList.add('dash-animate');
+      } else if (!connected && !sel) {
+        line.setAttribute('stroke', '#ebebea');
+        line.setAttribute('stroke-width', '0.6');
+        line.setAttribute('stroke-dasharray', '3 6');
+      } else {
+        line.setAttribute('stroke', sel ? 'rgba(8,8,8,0.22)' : '#e4e4e0');
+        line.setAttribute('stroke-width', sel ? '1.0' : '0.7');
+        if (sel) {
+          line.setAttribute('stroke-dasharray', '4 4');
+          line.classList.add('dash-animate');
+        }
       }
       svg.appendChild(line);
     });
@@ -154,17 +166,33 @@ export function DiscoverScreen() {
                 >
                   <div className="relative flex items-center justify-center">
                     <div
-                      className="absolute rounded-full border border-black/[0.07] pointer-events-none"
-                      style={{ width: 46, height: 46, animation: `ring-pulse 4.2s ease-out ${(i * 0.55) % 2.4}s infinite` }}
+                      className={cn(
+                        'absolute rounded-full border pointer-events-none',
+                        peer.connected 
+                          ? 'border-black/[0.07]' 
+                          : isSel 
+                            ? 'border-amber-400/35' 
+                            : 'border-black/[0.03]'
+                      )}
+                      style={{ 
+                        width: 46, 
+                        height: 46, 
+                        animation: `ring-pulse ${peer.connected ? '4.2s' : isSel ? '2.0s' : '5.5s'} ease-out ${(i * 0.55) % 2.4}s infinite` 
+                      }}
                     />
                     <div className={cn(
-                      'w-[38px] h-[38px] rounded-full bg-white flex items-center justify-center text-[11px] font-medium relative z-10 transition-all duration-200 shadow-[0_1px_6px_rgba(8,8,8,0.06)]',
+                      'w-[38px] h-[38px] rounded-full bg-white flex items-center justify-center text-[11px] font-medium relative z-10 transition-all duration-300 shadow-[0_1px_6px_rgba(8,8,8,0.06)]',
                       isSel
-                        ? 'border-[1.5px] border-[#080808] shadow-[0_0_0_3px_rgba(8,8,8,0.07)]'
+                        ? peer.connected
+                          ? 'border-[1.5px] border-[#080808] shadow-[0_0_0_3px_rgba(8,8,8,0.07)]'
+                          : 'border-[1.5px] border-[#eab308] shadow-[0_0_0_3px_rgba(234,179,8,0.12)] scale-105'
                         : 'border border-[#deded8] group-hover:border-[#080808] group-hover:scale-105',
-                      !peer.connected && 'opacity-40'
+                      !peer.connected && !isSel && 'opacity-50'
                     )}>
                       {peer.initials}
+                      {!peer.connected && isSel && (
+                        <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#eab308] rounded-full border border-white animate-ping" />
+                      )}
                     </div>
                   </div>
                   <span className="text-[9px] font-mono font-light text-[#8a8a84] max-w-[72px] truncate text-center leading-none">

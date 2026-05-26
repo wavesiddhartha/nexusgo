@@ -5,7 +5,7 @@
   "scripts": {
     "dev":   "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/server.js",
+    "start": "node dist/apps/signaling/src/server.js",
     "vapid": "npx web-push generate-vapid-keys"
   },
   "dependencies": {

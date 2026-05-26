@@ -12,7 +12,6 @@ RUN pnpm install --frozen-lockfile
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=deps /app/apps/signaling/node_modules  ./apps/signaling/node_modules
 COPY . .
 RUN pnpm --filter @nexus/signaling build

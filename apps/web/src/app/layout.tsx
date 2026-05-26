@@ -54,7 +54,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${dmSans.variable} ${dmMono.variable}`}>
-      <body className="font-sans antialiased bg-white text-black select-none">
+      <body className="font-sans antialiased bg-white text-black">
         {children}
         <Toaster
           position="bottom-center"

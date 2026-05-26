@@ -57,7 +57,7 @@ interface Actions {
   setActivePeer:    (id: string | null) => void;
   setSelectedPeer:  (id: string | null) => void;
   setActiveRoom:    (id: string | null) => void;
-  sendMessage:      (peerId: string, text: string) => void;
+  sendMessage:      (peerId: string, text: string, replyTo?: { id: string; senderName: string; text: string }) => void;
   sendFile:         (peerId: string, file: File) => Promise<void>;
   sendVoiceMsg:     (peerId: string, blob: Blob, durationMs: number) => Promise<void>;
   sendTyping:       (peerId: string) => void;
@@ -223,14 +223,14 @@ export const useNexusStore = create<NexusState>()(
         },
 
         // ── Messaging ────────────────────────────────────────────────────────
-        sendMessage(peerId, text) {
+        sendMessage(peerId, text, replyTo) {
           const m = get().manager;
           if (!m) return;
           try {
-            const msgId = m.sendChat(peerId, text);
+            const msgId = m.sendChat(peerId, text, replyTo);
             set(s => {
               if (!s.threads[peerId]) s.threads[peerId] = [];
-              s.threads[peerId].push({ id: msgId, peerId, mine: true, text, ts: Date.now(), read: true });
+              s.threads[peerId].push({ id: msgId, peerId, mine: true, text, ts: Date.now(), read: true, replyTo });
               s.stats.msgsSent++;
             });
           } catch (e) { console.error('[store] sendMessage', e); }

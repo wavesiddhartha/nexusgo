@@ -70,22 +70,86 @@ function FileModal({ onClose, onSelect }: { onClose: () => void; onSelect: (f: F
   );
 }
 
+// ── Quote / Reference Box ───────────────────────────────────────────────────
+function QuoteBox({ replyTo, mine }: { replyTo: { id: string; senderName: string; text: string }; mine: boolean }) {
+  return (
+    <div
+      onClick={(e) => {
+        e.stopPropagation();
+        const el = document.getElementById(`msg-${replyTo.id}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.classList.add('bg-yellow-100/40', 'ring-2', 'ring-yellow-400/20');
+          setTimeout(() => {
+            el.classList.remove('bg-yellow-100/40', 'ring-2', 'ring-yellow-400/20');
+          }, 1200);
+        }
+      }}
+      className={cn(
+        'mb-2 px-2.5 py-1.5 rounded-[12px] text-left border-l-2 text-[11px] cursor-pointer select-none truncate transition-all duration-200',
+        mine
+          ? 'bg-white/10 border-white/40 text-white/90 hover:bg-white/15'
+          : 'bg-[#080808]/5 border-[#080808]/30 text-black/80 hover:bg-[#080808]/10'
+      )}
+      style={{ maxWidth: 200 }}
+    >
+      <div className="font-medium text-[9px] uppercase tracking-wider mb-0.5 opacity-90">
+        {replyTo.senderName}
+      </div>
+      <div className="truncate text-[11px] font-light">
+        {replyTo.text}
+      </div>
+    </div>
+  );
+}
+
+// ── Reply Button ─────────────────────────────────────────────────────────────
+function ReplyButton({ onReply }: { onReply: () => void }) {
+  return (
+    <button
+      onClick={onReply}
+      className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 w-7 h-7 rounded-full bg-[#f0f0ee] hover:bg-[#e0e0dc] active:scale-95 flex items-center justify-center shrink-0 border border-[#e4e4e0] cursor-pointer select-none"
+      title="Reply"
+    >
+      <svg className="w-3.5 h-3.5 stroke-[#5a5a55]" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+        <polyline points="9 17 4 12 9 7"/>
+        <path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
+      </svg>
+    </button>
+  );
+}
+
 // ── Message bubble ─────────────────────────────────────────────────────────────
-function Bubble({ msg }: { msg: LocalMessage }) {
+function Bubble({ msg, onReply }: { msg: LocalMessage; onReply: (msg: LocalMessage) => void }) {
   // Voice message
   if (msg.voice) {
     return (
-      <div className={cn('flex flex-col', msg.mine ? 'items-end self-end' : 'items-start self-start')}>
-        <VoiceBubble
-          url={msg.voice.url}
-          durationMs={msg.voice.durationMs}
-          progress={msg.voice.progress}
-          done={msg.voice.done}
-          mine={msg.mine}
-        />
-        <span className="text-[9px] font-mono font-light text-[#c8c8c2] mt-1.5 px-1">
-          {formatTime(new Date(msg.ts))}
-        </span>
+      <div
+        id={`msg-${msg.id}`}
+        className={cn(
+          'flex items-center gap-2 group max-w-[85%] select-text transition-all duration-300 rounded-[18px]',
+          msg.mine ? 'self-end flex-row-reverse' : 'self-start flex-row'
+        )}
+      >
+        <div className={cn('flex flex-col', msg.mine ? 'items-end' : 'items-start')}>
+          <div className={cn(
+            'px-3.5 py-2.5 rounded-[18px]',
+            msg.mine ? 'bg-[#080808] text-white rounded-br-[5px]' : 'bg-[#f0f0ee] text-black rounded-bl-[5px]'
+          )}>
+            {msg.replyTo && <QuoteBox replyTo={msg.replyTo} mine={msg.mine} />}
+            <VoiceBubble
+              url={msg.voice.url}
+              durationMs={msg.voice.durationMs}
+              progress={msg.voice.progress}
+              done={msg.voice.done}
+              mine={msg.mine}
+            />
+          </div>
+          <span className="text-[9px] font-mono font-light text-[#c8c8c2] mt-1.5 px-1">
+            {formatTime(new Date(msg.ts))}
+          </span>
+        </div>
+        <ReplyButton onReply={() => onReply(msg)} />
       </div>
     );
   }
@@ -95,94 +159,114 @@ function Bubble({ msg }: { msg: LocalMessage }) {
     const hasUrl   = !!msg.file.url;
     const isDone   = msg.file.done;
     return (
-      <div className={cn('flex flex-col max-w-[78%]', msg.mine ? 'items-end self-end' : 'items-start self-start')}>
-        <div
-          onClick={() => {
-            if (hasUrl && msg.file?.url) {
-              const a = document.createElement('a');
-              a.href = msg.file.url;
-              a.download = msg.file.name;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-            }
-          }}
-          className={cn(
-            'rounded-[14px] p-3.5 transition-colors',
-            hasUrl ? 'cursor-pointer' : 'cursor-default',
-            msg.mine
-              ? 'bg-[#f0f0ee] border border-[#e4e4e0] hover:border-[#b0b0a8]'
-              : 'bg-white      border border-[#e8e8e4] hover:border-[#b0b0a8]'
-          )}
-          style={{ minWidth: 190, maxWidth: 240 }}
-        >
-          {/* File info */}
-          <div className="flex items-start gap-2.5 mb-2.5">
-            <div className="w-9 h-9 rounded-[9px] bg-[#f0f0ee] flex items-center justify-center border border-[#e4e4e0] shrink-0">
-              <svg className="w-[15px] h-[15px] stroke-[#7a7a74]" fill="none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-                <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
-                <polyline points="13 2 13 9 20 9"/>
-              </svg>
+      <div
+        id={`msg-${msg.id}`}
+        className={cn(
+          'flex items-center gap-2 group max-w-[85%] select-text transition-all duration-300 rounded-[18px]',
+          msg.mine ? 'self-end flex-row-reverse' : 'self-start flex-row'
+        )}
+      >
+        <div className={cn('flex flex-col', msg.mine ? 'items-end' : 'items-start')}>
+          <div
+            onClick={() => {
+              if (hasUrl && msg.file?.url) {
+                const a = document.createElement('a');
+                a.href = msg.file.url;
+                a.download = msg.file.name;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+              }
+            }}
+            className={cn(
+              'rounded-[14px] p-3.5 transition-colors',
+              hasUrl ? 'cursor-pointer' : 'cursor-default',
+              msg.mine
+                ? 'bg-[#f0f0ee] border border-[#e4e4e0] hover:border-[#b0b0a8]'
+                : 'bg-white      border border-[#e8e8e4] hover:border-[#b0b0a8]'
+            )}
+            style={{ minWidth: 190, maxWidth: 240 }}
+          >
+            {msg.replyTo && <QuoteBox replyTo={msg.replyTo} mine={msg.mine} />}
+            {/* File info */}
+            <div className="flex items-start gap-2.5 mb-2.5">
+              <div className="w-9 h-9 rounded-[9px] bg-[#f0f0ee] flex items-center justify-center border border-[#e4e4e0] shrink-0">
+                <svg className="w-[15px] h-[15px] stroke-[#7a7a74]" fill="none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                  <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+                  <polyline points="13 2 13 9 20 9"/>
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] font-medium text-black truncate">{msg.file.name}</div>
+                <div className="text-[10px] font-mono font-light text-[#a0a09a] mt-0.5">{formatBytes(msg.file.size)}</div>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-[12px] font-medium text-black truncate">{msg.file.name}</div>
-              <div className="text-[10px] font-mono font-light text-[#a0a09a] mt-0.5">{formatBytes(msg.file.size)}</div>
-            </div>
-          </div>
 
-          {/* Progress / status */}
-          {!isDone ? (
-            <>
-              <div className="h-[2px] bg-[#ebebea] rounded-full overflow-hidden mb-1.5">
-                <motion.div
-                  className="h-full bg-[#080808] rounded-full"
-                  animate={{ width: `${msg.file.progress}%` }}
-                  transition={{ duration: 0.2 }}
-                />
+            {/* Progress / status */}
+            {!isDone ? (
+              <>
+                <div className="h-[2px] bg-[#ebebea] rounded-full overflow-hidden mb-1.5">
+                  <motion.div
+                    className="h-full bg-[#080808] rounded-full"
+                    animate={{ width: `${msg.file.progress}%` }}
+                    transition={{ duration: 0.2 }}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono font-light text-[#a0a09a]">{msg.file.progress}%</span>
+                  {(msg.file.speed || msg.file.eta) && (
+                    <span className="text-[10px] font-mono font-light text-[#a0a09a]">
+                      {msg.file.speed}{msg.file.eta ? ` · ${msg.file.eta}` : ''}
+                    </span>
+                  )}
+                </div>
+              </>
+            ) : hasUrl ? (
+              <div className="flex items-center gap-1.5">
+                <svg className="w-3 h-3 stroke-[#3b82f6]" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <span className="text-[10px] font-mono font-light text-[#3b82f6]">Download</span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono font-light text-[#a0a09a]">{msg.file.progress}%</span>
-                {(msg.file.speed || msg.file.eta) && (
-                  <span className="text-[10px] font-mono font-light text-[#a0a09a]">
-                    {msg.file.speed}{msg.file.eta ? ` · ${msg.file.eta}` : ''}
-                  </span>
-                )}
-              </div>
-            </>
-          ) : hasUrl ? (
-            <div className="flex items-center gap-1.5">
-              <svg className="w-3 h-3 stroke-[#3b82f6]" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              <span className="text-[10px] font-mono font-light text-[#3b82f6]">Download</span>
-            </div>
-          ) : (
-            <span className="text-[10px] font-mono font-light text-[#22c55e]">Sent ✓</span>
-          )}
+            ) : (
+              <span className="text-[10px] font-mono font-light text-[#22c55e]">Sent ✓</span>
+            )}
+          </div>
+          <span className="text-[9px] font-mono font-light text-[#c8c8c2] mt-1.5 px-1">
+            {formatTime(new Date(msg.ts))}
+          </span>
         </div>
-        <span className="text-[9px] font-mono font-light text-[#c8c8c2] mt-1.5 px-1">
-          {formatTime(new Date(msg.ts))}
-        </span>
+        <ReplyButton onReply={() => onReply(msg)} />
       </div>
     );
   }
 
   // Text message
   return (
-    <div className={cn('flex flex-col max-w-[80%]', msg.mine ? 'items-end self-end' : 'items-start self-start')}>
-      <div className={cn(
-        'px-3.5 py-2.5 text-[14px] leading-[1.55] break-words rounded-[18px]',
-        msg.mine
-          ? 'bg-[#080808] text-white rounded-br-[5px]'
-          : 'bg-[#f0f0ee] text-black rounded-bl-[5px]'
-      )}>
-        {msg.text}
+    <div
+      id={`msg-${msg.id}`}
+      className={cn(
+        'flex items-center gap-2 group max-w-[85%] select-text transition-all duration-300 rounded-[18px]',
+        msg.mine ? 'self-end flex-row-reverse' : 'self-start flex-row'
+      )}
+    >
+      <div className={cn('flex flex-col', msg.mine ? 'items-end' : 'items-start')}>
+        <div className={cn(
+          'px-3.5 py-2.5 text-[14px] leading-[1.55] break-words rounded-[18px]',
+          msg.mine
+            ? 'bg-[#080808] text-white rounded-br-[5px]'
+            : 'bg-[#f0f0ee] text-black rounded-bl-[5px]'
+        )}>
+          {msg.replyTo && <QuoteBox replyTo={msg.replyTo} mine={msg.mine} />}
+          {msg.text}
+        </div>
+        <span className="text-[9px] font-mono font-light text-[#c8c8c2] mt-1.5 px-1">
+          {formatTime(new Date(msg.ts))}
+        </span>
       </div>
-      <span className="text-[9px] font-mono font-light text-[#c8c8c2] mt-1.5 px-1">
-        {formatTime(new Date(msg.ts))}
-      </span>
+      <ReplyButton onReply={() => onReply(msg)} />
     </div>
   );
 }
@@ -262,6 +346,7 @@ export function ChatScreen() {
   const [text,       setText]      = useState('');
   const [showModal,  setShowModal] = useState(false);
   const [showVoice,  setShowVoice] = useState(false);
+  const [replyTarget, setReplyTarget] = useState<LocalMessage | null>(null);
 
   const taRef         = useRef<HTMLTextAreaElement>(null);
   const msgRef        = useAutoscroll([thread.length, activePeerId]);
@@ -277,10 +362,21 @@ export function ChatScreen() {
     const v = text.trim();
     if (!v || !activePeerId) return;
     if (!peer?.connected) { toast.error('Peer not connected'); return; }
-    sendMessage(activePeerId, v);
+    
+    let replyPayload = undefined;
+    if (replyTarget) {
+      replyPayload = {
+        id: replyTarget.id,
+        senderName: replyTarget.mine ? 'You' : (peer.name || 'Peer'),
+        text: replyTarget.file ? `📎 ${replyTarget.file.name}` : replyTarget.voice ? '🎙️ Voice Message' : (replyTarget.text ?? ''),
+      };
+    }
+
+    sendMessage(activePeerId, v, replyPayload);
     setText('');
+    setReplyTarget(null);
     if (taRef.current) taRef.current.style.height = 'auto';
-  }, [text, activePeerId, peer, sendMessage]);
+  }, [text, activePeerId, peer, sendMessage, replyTarget]);
 
   const handleFile = useCallback(async (file: File) => {
     if (!activePeerId || !peer?.connected) { toast.error('Peer not connected'); return; }
@@ -394,7 +490,7 @@ export function ChatScreen() {
               <p className="text-[11px] font-mono font-light text-[#d0d0cc]">No messages yet</p>
             </div>
           ) : (
-            thread.map(msg => <Bubble key={msg.id} msg={msg} />)
+            thread.map(msg => <Bubble key={msg.id} msg={msg} onReply={setReplyTarget} />)
           )}
 
           {/* Typing indicator */}
@@ -425,6 +521,29 @@ export function ChatScreen() {
           className="border-t border-[#ebebea] px-4 py-2.5 shrink-0 bg-white"
           style={{ paddingBottom: 'calc(10px + var(--safe-bottom))' }}
         >
+          {/* Reply Preview Card */}
+          {replyTarget && (
+            <div className="flex items-center justify-between bg-[#f5f5f3] border-l-4 border-[#080808] px-3.5 py-2 mb-2 rounded-r-[12px] animate-fadeIn select-none">
+              <div className="min-w-0 flex-1">
+                <span className="text-[10px] font-mono font-medium uppercase tracking-wider text-black">
+                  Replying to {replyTarget.mine ? 'You' : peer.name}
+                </span>
+                <p className="text-[12px] text-[#5a5a55] truncate font-light mt-0.5">
+                  {replyTarget.file ? `📎 ${replyTarget.file.name}` : replyTarget.voice ? '🎙️ Voice Message' : replyTarget.text}
+                </p>
+              </div>
+              <button
+                onClick={() => setReplyTarget(null)}
+                className="w-5 h-5 rounded-full hover:bg-[#e4e4e0] flex items-center justify-center shrink-0 ml-2"
+              >
+                <svg className="w-3 h-3 stroke-[#5a5a55]" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+          )}
+
           <AnimatePresence mode="wait">
             {showVoice ? (
               <motion.div key="voice" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>

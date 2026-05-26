@@ -73,7 +73,7 @@ export interface RoomInfo  { id: string; name: string; members: PeerInfo[]; crea
 
 // ── DataChannel protocol ──────────────────────────────────────────────────────
 export interface HelloMsg      { type: 'hello';        name: string; version: string }
-export interface ChatMsg       { type: 'chat';         text: string; ts: number; msgId: string }
+export interface ChatMsg       { type: 'chat';         text: string; ts: number; msgId: string; replyTo?: { id: string; senderName: string; text: string } }
 export interface TypingMsg     { type: 'typing' }
 export interface ReadMsg       { type: 'read';         msgId: string }
 export interface PingMsg       { type: 'ping';         ts: number }

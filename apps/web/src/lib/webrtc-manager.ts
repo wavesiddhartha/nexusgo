@@ -57,6 +57,11 @@ export interface LocalMessage {
   };
   ts: number;
   read: boolean;
+  replyTo?: {
+    id: string;
+    senderName: string;
+    text: string;
+  };
 }
 
 export type CallState = 'ringing-out' | 'ringing-in' | 'active' | 'ended';
@@ -182,10 +187,10 @@ export class WebRTCManager {
   }
 
   // ── 1-to-1 chat ───────────────────────────────────────────────────────────
-  sendChat(peerId: string, text: string): string {
+  sendChat(peerId: string, text: string, replyTo?: { id: string; senderName: string; text: string }): string {
     const conn = this.requireOpen(peerId);
     const msgId = nanoid();
-    this.dc_send(conn, { type: 'chat', text, ts: Date.now(), msgId });
+    this.dc_send(conn, { type: 'chat', text, ts: Date.now(), msgId, replyTo });
     return msgId;
   }
 
@@ -665,7 +670,7 @@ export class WebRTCManager {
 
       // ── Chat ─────────────────────────────────────────────────────────────
       case 'chat':
-        this.emit({ type: 'message', msg: { id: msg.msgId, peerId: pid, mine: false, text: msg.text, ts: msg.ts, read: false } });
+        this.emit({ type: 'message', msg: { id: msg.msgId, peerId: pid, mine: false, text: msg.text, ts: msg.ts, read: false, replyTo: msg.replyTo } });
         break;
 
       case 'typing':

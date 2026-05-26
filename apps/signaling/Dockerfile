@@ -25,7 +25,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=builder /app/apps/signaling/dist          ./apps/signaling/dist
 COPY --from=deps    /app/apps/signaling/node_modules  ./apps/signaling/node_modules
-COPY --from=deps    /app/packages/shared              ./packages/shared
+COPY --from=builder /app/packages/shared              ./packages/shared
 COPY --from=deps    /app/node_modules                 ./node_modules
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s CMD wget -qO- http://localhost:8787/health || exit 1

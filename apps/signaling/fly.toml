@@ -1,0 +1,30 @@
+# ── Fly.io config for NEXUS signaling server ──────────────────────────────────
+# Deploy:  fly launch --copy-config
+# Secrets: fly secrets set VAPID_PUBLIC_KEY=... VAPID_PRIVATE_KEY=...
+
+app            = "nexus-signal"
+primary_region = "sin"   # Singapore — closest to South Asia; change to your region
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT     = "8787"
+
+[http_service]
+  internal_port       = 8787
+  force_https         = true
+  auto_stop_machines  = true
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type       = "connections"
+    hard_limit = 25000
+    soft_limit = 20000
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus     = 1
+  memory   = "512mb"

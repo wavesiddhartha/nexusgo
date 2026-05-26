@@ -1,0 +1,134 @@
+// ─── @nexus/shared — single source of truth ──────────────────────────────────
+
+// ── Anime names ───────────────────────────────────────────────────────────────
+export const ANIME_NAMES = [
+  'Naruto','Sasuke','Sakura','Kakashi','Itachi','Hinata','Gaara','Rock Lee',
+  'Goku','Vegeta','Gohan','Piccolo','Bulma','Krillin','Frieza','Cell',
+  'Luffy','Zoro','Nami','Sanji','Usopp','Robin','Chopper','Franky','Ace',
+  'Ichigo','Rukia','Orihime','Renji','Byakuya','Urahara','Yoruichi','Grimmjow',
+  'Edward','Alphonse','Winry','Roy Mustang','Riza','Scar','Envy','Lust',
+  'Gon','Killua','Kurapika','Leorio','Hisoka','Netero','Neferpitou','Illumi',
+  'Natsu','Lucy','Gray','Erza','Happy','Wendy','Makarov','Laxus','Jellal',
+  'Levi','Eren','Mikasa','Armin','Hange','Erwin','Historia','Reiner','Sasha',
+  'Deku','Bakugo','Todoroki','Ochaco','Iida','All Might','Endeavor','Aizawa',
+  'Tanjiro','Nezuko','Zenitsu','Inosuke','Giyu','Shinobu','Rengoku','Muzan',
+  'Spike','Faye','Jet','Ein','Radical Ed',
+  'Asuna','Kirito','Klein','Agil','Sinon','Leafa',
+  'Rem','Ram','Emilia','Subaru','Beatrice','Roswaal','Felix',
+  'Senku','Taiju','Chrome','Kohaku','Gen','Tsukasa',
+  'Rimuru','Milim','Shion','Benimaru','Gobta','Ranga',
+  'Megumi','Nobara','Yuji','Gojo','Nanami','Sukuna',
+  'Denji','Power','Aki','Makima','Kishibe',
+  'Zoro','Nami','Law','Hancock','Shanks','Whitebeard',
+] as const;
+
+export function randomAnimeName(): string {
+  return ANIME_NAMES[Math.floor(Math.random() * ANIME_NAMES.length)];
+}
+
+export function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+export function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), u.length - 1);
+  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${u[i]}`;
+}
+
+export function formatTime(date: Date = new Date()): string {
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+export function formatDuration(ms: number): string {
+  const totalSec = Math.floor(Math.max(0, ms) / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+// ── Signaling protocol ────────────────────────────────────────────────────────
+export interface SignalingMessage {
+  type:
+    | 'register' | 'offer' | 'answer' | 'ice-candidate'
+    | 'heartbeat' | 'peer-list' | 'peer-joined' | 'peer-left'
+    | 'push-subscribe' | 'push-unsubscribe' | 'push-notify'
+    | 'room-create' | 'room-join' | 'room-leave' | 'room-list'
+    | 'room-info' | 'room-members' | 'room-joined' | 'room-left'
+    | 'vapid-key' | 'error';
+  from?:   string;
+  to?:     string;
+  roomId?: string;
+  payload?: unknown;
+}
+
+export interface PeerInfo  { id: string; name: string; ts: number }
+export interface RoomInfo  { id: string; name: string; members: PeerInfo[]; createdBy: string; createdAt: number }
+
+// ── DataChannel protocol ──────────────────────────────────────────────────────
+export interface HelloMsg      { type: 'hello';        name: string; version: string }
+export interface ChatMsg       { type: 'chat';         text: string; ts: number; msgId: string }
+export interface TypingMsg     { type: 'typing' }
+export interface ReadMsg       { type: 'read';         msgId: string }
+export interface PingMsg       { type: 'ping';         ts: number }
+export interface PongMsg       { type: 'pong';         ts: number }
+export interface FileMeta      { type: 'file-meta';    fileId: string; name: string; size: number; mime: string; totalChunks: number; chunkSize: number }
+export interface FileChunk     { type: 'file-chunk';   fileId: string; index: number; data: string; total: number }
+export interface FileDone      { type: 'file-done';    fileId: string }
+export interface VoiceMeta     { type: 'voice-meta';   voiceId: string; durationMs: number; size: number; totalChunks: number }
+export interface VoiceChunk    { type: 'voice-chunk';  voiceId: string; index: number; data: string; total: number }
+export interface CallInvite    { type: 'call-invite';  callId: string; kind: CallKind; callerName: string }
+export interface CallAnswer    { type: 'call-answer';  callId: string; accepted: boolean }
+export interface CallEnd       { type: 'call-end';     callId: string; reason?: string }
+export interface CallBusy      { type: 'call-busy';    callId: string }
+export interface GroupMsg      { type: 'group-msg';    roomId: string; text: string; ts: number; msgId: string; senderName: string; senderId: string }
+
+export type DataMsg =
+  | HelloMsg | ChatMsg | TypingMsg | ReadMsg
+  | PingMsg  | PongMsg
+  | FileMeta | FileChunk | FileDone
+  | VoiceMeta | VoiceChunk
+  | CallInvite | CallAnswer | CallEnd | CallBusy
+  | GroupMsg;
+
+// ── Push payload ──────────────────────────────────────────────────────────────
+export interface PushPayload {
+  type:      'message' | 'call' | 'file' | 'voice' | 'group-message';
+  title:     string;
+  body:      string;
+  fromId:    string;
+  fromName:  string;
+  callId?:   string;
+  callKind?: CallKind;
+  roomId?:   string;
+  url?:      string;
+  icon?:     string;
+}
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+export type CallKind = 'voice' | 'video';
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+export const CHUNK_SIZE       = 256 * 1024;            // 256 KB per file chunk
+export const VOICE_CHUNK      = 32  * 1024;            // 32 KB per voice chunk
+export const MAX_FILE_SIZE    = 2   * 1024 * 1024 * 1024; // 2 GB
+export const PROTOCOL_VERSION = '2.0.0';
+export const HEARTBEAT_MS     = 10_000;
+export const PEER_TIMEOUT_MS  = 30_000;
+export const RING_TIMEOUT_MS  = 45_000;
+export const MAX_MESH_PEERS   = 8;
+
+export const ICE_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302'        },
+  { urls: 'stun:stun1.l.google.com:19302'       },
+  { urls: 'stun:global.stun.twilio.com:3478'    },
+  { urls: 'stun:stun.nextcloud.com:443'         },
+  // ⚠ Production: add TURN servers from Metered.ca or self-hosted coturn
+  // { urls: 'turn:your-turn.nexusgo.me:3478', username: 'nexus', credential: 'xxx' }
+];

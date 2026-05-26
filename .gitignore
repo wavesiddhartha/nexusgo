@@ -1,0 +1,27 @@
+# Dependency directories
+node_modules/
+jspm_packages/
+web_modules/
+
+# Next.js build output
+.next/
+out/
+
+# Turbo build cache
+.turbo/
+
+# Build and dist outputs
+dist/
+build/
+bin/
+
+# Debug and system files
+.DS_Store
+.DS_Store?
+ehthumbs.db
+Thumbs.db
+*.log
+
+# Local environment variables
+.env*.local
+.env

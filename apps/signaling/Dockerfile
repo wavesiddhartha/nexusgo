@@ -1,6 +1,10 @@
 # ── Multi-stage Docker build for NEXUS signaling ──────────────────────────────
-FROM node:24-slim AS base
-RUN npm i -g pnpm@9
+FROM ubuntu:24.04 AS base
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y curl ca-certificates wget && \
+    curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
+    apt-get install -y nodejs && \
+    npm i -g pnpm@9
 
 FROM base AS deps
 WORKDIR /app
@@ -16,7 +20,7 @@ COPY --from=deps /app/apps/signaling/node_modules  ./apps/signaling/node_modules
 COPY . .
 RUN pnpm --filter @nexus/signaling build
 
-FROM node:24-slim AS runner
+FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=builder /app/apps/signaling/dist          ./apps/signaling/dist

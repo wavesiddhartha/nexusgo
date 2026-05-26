@@ -115,7 +115,7 @@ export interface PushPayload {
 export type CallKind = 'voice' | 'video';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-export const CHUNK_SIZE       = 256 * 1024;            // 256 KB per file chunk
+export const CHUNK_SIZE       = 16 * 1024;            // 16 KB per file chunk (safest standard for cross-browser WebRTC limits)
 export const VOICE_CHUNK      = 32  * 1024;            // 32 KB per voice chunk
 export const MAX_FILE_SIZE    = 2   * 1024 * 1024 * 1024; // 2 GB
 export const PROTOCOL_VERSION = '2.0.0';

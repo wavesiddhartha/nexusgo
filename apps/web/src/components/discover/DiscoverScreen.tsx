@@ -20,6 +20,16 @@ function nameToInitials(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
+function getAvatarGradient(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue1 = Math.abs(hash % 360);
+  const hue2 = Math.abs((hash * 7 + 120) % 360);
+  return `linear-gradient(135deg, hsl(${hue1}, 80%, 93%), hsl(${hue2}, 80%, 93%))`;
+}
+
 export function DiscoverScreen() {
   const peers         = useNexusStore(selectPeerList);
   const selectedId    = useNexusStore(s => s.selectedPeerId);
@@ -196,12 +206,17 @@ export function DiscoverScreen() {
             return (
               <motion.div
                 key={peer.id}
-                className="absolute z-10"
+                className="absolute z-10 cursor-grab active:cursor-grabbing"
                 style={{ left: `${fx * 100}%`, top: `${fy * 100}%`, transform: 'translate(-50%,-50%)' }}
                 initial={{ scale: 0, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0, opacity: 0 }}
                 transition={{ type: 'spring', stiffness: 420, damping: 26 }}
+                drag
+                dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+                dragElastic={0.5}
+                dragTransition={{ bounceStiffness: 420, bounceDamping: 22 }}
+                whileDrag={{ scale: 1.15, zIndex: 40 }}
               >
                 <div
                   className="flex flex-col items-center gap-1 cursor-pointer group"
@@ -218,13 +233,16 @@ export function DiscoverScreen() {
                         animation: `ring-pulse 4.8s ease-out ${(i * 0.55) % 2.4}s infinite` 
                       }}
                     />
-                    <div className={cn(
-                      'w-[38px] h-[38px] rounded-full bg-white flex items-center justify-center text-[11px] font-medium relative z-10 transition-all duration-300 shadow-[0_1px_6px_rgba(8,8,8,0.06)]',
-                      isSel
-                        ? 'border-[1.8px] border-[#080808] scale-105'
-                        : 'border border-[#deded8] group-hover:border-[#080808] group-hover:scale-105',
-                      !peer.connected && !isSel && 'opacity-50'
-                    )}>
+                    <div
+                      className={cn(
+                        'w-[38px] h-[38px] rounded-full flex items-center justify-center text-[11px] font-medium relative z-10 transition-all duration-300 shadow-[0_1px_6px_rgba(8,8,8,0.06)]',
+                        isSel
+                          ? 'border-[1.8px] border-[#080808] scale-105 shadow-[0_4px_12px_rgba(8,8,8,0.08)]'
+                          : 'border border-[#deded8] group-hover:border-[#080808] group-hover:scale-105',
+                        !peer.connected && !isSel && 'opacity-50'
+                      )}
+                      style={{ background: getAvatarGradient(peer.name) }}
+                    >
                       {peer.initials}
                     </div>
                   </div>

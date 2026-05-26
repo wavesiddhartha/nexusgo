@@ -290,6 +290,19 @@ export function ProfileScreen() {
           </div>
         </div>
 
+        {/* ── Copyright Footer ─────────────────────────────────── */}
+        <div className="text-center pt-4 pb-2 space-y-1">
+          <p className="text-[11px] font-mono font-light text-[#a0a09a]">
+            NEXUS &copy; 2026 &middot; nexusgo.me
+          </p>
+          <p className="text-[11px] font-mono font-light text-[#a0a09a]">
+            Created by Siddhartha Sahani
+          </p>
+          <p className="text-[10px] font-mono font-light text-[#b0b0a8]">
+            mail@nexusgo.me
+          </p>
+        </div>
+
       </div>
     </div>
   );

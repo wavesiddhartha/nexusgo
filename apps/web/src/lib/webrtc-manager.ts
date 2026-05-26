@@ -13,7 +13,7 @@
 import {
   ICE_SERVERS, CHUNK_SIZE, VOICE_CHUNK, PROTOCOL_VERSION,
   HEARTBEAT_MS, MAX_FILE_SIZE, RING_TIMEOUT_MS,
-  initials, randomAnimeName,
+  initials, randomAnimeName, formatBytes,
 } from '@nexus/shared';
 import type {
   SignalingMessage, DataMsg, PushPayload, CallKind,
@@ -674,6 +674,8 @@ export class WebRTCManager {
 
       // ── File transfer ─────────────────────────────────────────────────────
       case 'file-meta': {
+        const accept = window.confirm(`${conn.info.name} wants to send you a file:\n"${msg.name}" (${formatBytes(msg.size)})\n\nDo you want to accept this transfer?`);
+        if (!accept) break;
         conn.inFiles.set(msg.fileId, {
           name: msg.name, size: msg.size, mime: msg.mime,
           chunks: new Array(msg.totalChunks).fill(null),
@@ -705,6 +707,14 @@ export class WebRTCManager {
           });
           const url = URL.createObjectURL(new Blob(blobs, { type: tf.mime }));
           this.emit({ type: 'file-progress', peerId: pid, fileId: msg.fileId, progress: 100, url });
+
+          // ➔ Automatically trigger the save/download dialog on completion!
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = tf.name;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
         }
         conn.inFiles.delete(msg.fileId);
         break;

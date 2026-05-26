@@ -97,7 +97,16 @@ function Bubble({ msg }: { msg: LocalMessage }) {
     return (
       <div className={cn('flex flex-col max-w-[78%]', msg.mine ? 'items-end self-end' : 'items-start self-start')}>
         <div
-          onClick={() => hasUrl && window.open(msg.file!.url!, '_blank')}
+          onClick={() => {
+            if (hasUrl && msg.file?.url) {
+              const a = document.createElement('a');
+              a.href = msg.file.url;
+              a.download = msg.file.name;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+            }
+          }}
           className={cn(
             'rounded-[14px] p-3.5 transition-colors',
             hasUrl ? 'cursor-pointer' : 'cursor-default',

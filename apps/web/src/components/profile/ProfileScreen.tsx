@@ -291,16 +291,23 @@ export function ProfileScreen() {
         </div>
 
         {/* ── Copyright Footer ─────────────────────────────────── */}
-        <div className="text-center pt-4 pb-2 space-y-1">
-          <p className="text-[11px] font-mono font-light text-[#a0a09a]">
-            NEXUS &copy; 2026 &middot; nexusgo.me
-          </p>
-          <p className="text-[11px] font-mono font-light text-[#a0a09a]">
-            Created by Siddhartha Sahani
-          </p>
-          <p className="text-[10px] font-mono font-light text-[#b0b0a8]">
-            mail@nexusgo.me
-          </p>
+        <div className="text-center pt-4 pb-2 space-y-3 flex flex-col items-center">
+          <div className="space-y-1">
+            <p className="text-[11px] font-mono font-light text-[#a0a09a]">
+              NEXUS &copy; 2026 &middot; nexusgo.me
+            </p>
+            <p className="text-[11px] font-mono font-light text-[#a0a09a]">
+              Created by Siddhartha Sahani
+            </p>
+            <p className="text-[10px] font-mono font-light text-[#b0b0a8]">
+              mail@nexusgo.me
+            </p>
+          </div>
+          <div className="pt-2">
+            <a href="https://www.producthunt.com/products/nexus-25?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-nexus-038c6965-df91-47e4-900f-5e1515d2d940" target="_blank" rel="noopener noreferrer">
+              <img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1156697&amp;theme=dark&amp;t=1779831018428" alt="NEXUS - Instant P2P chat, calls &amp; file sharing. Zero setup &amp; cloud. | Product Hunt" width="250" height="54" className="mx-auto" />
+            </a>
+          </div>
         </div>
 
       </div>

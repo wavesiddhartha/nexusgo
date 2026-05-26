@@ -12,6 +12,13 @@ import { persist } from 'zustand/middleware';
 import { WebRTCManager } from '@/lib/webrtc-manager';
 import type { RemotePeer, LocalMessage, ActiveCall, GroupRoom } from '@/lib/webrtc-manager';
 import { nanoid } from 'nanoid';
+import {
+  playSentSound,
+  playReceivedSound,
+  playConnectedSound,
+  startCallRinging,
+  stopCallRinging
+} from '@/lib/sounds';
 
 export type Screen = 'discover' | 'peers' | 'chat' | 'groups' | 'profile';
 
@@ -40,6 +47,10 @@ interface State {
 
   // Push
   pushEnabled:   boolean;
+
+  // Settings
+  soundsEnabled: boolean;
+  privacyMode:   boolean;
 
   // UI
   activeScreen:  Screen;
@@ -74,6 +85,8 @@ interface Actions {
   leaveRoom:        (id: string) => void;
   sendGroupMessage: (roomId: string, text: string) => void;
   enablePush:       () => Promise<boolean>;
+  toggleSounds:     () => void;
+  togglePrivacy:    () => void;
 }
 
 type NexusState = State & Actions;
@@ -88,6 +101,7 @@ export const useNexusStore = create<NexusState>()(
         peers: {}, threads: {}, unread: {}, activePeerId: null,
         rooms: {}, groupThreads: {}, groupUnread: {}, activeRoomId: null,
         activeCall: null, pushEnabled: false,
+        soundsEnabled: true, privacyMode: false,
         activeScreen: 'discover', selectedPeerId: null,
         stats: { msgsSent: 0, filesShared: 0, bytesShared: 0, callsTotal: 0 },
 
@@ -109,9 +123,15 @@ export const useNexusStore = create<NexusState>()(
                 break;
 
               case 'peer-added':
-              case 'peer-updated':
+              case 'peer-updated': {
+                const prev = get().peers[ev.peer.id];
+                const becomesConnected = (!prev || !prev.connected) && ev.peer.connected;
                 set(s => { s.peers[ev.peer.id] = ev.peer; });
+                if (becomesConnected && get().soundsEnabled) {
+                  playConnectedSound();
+                }
                 break;
+              }
               case 'peer-removed':
                 set(s => { delete s.peers[ev.peerId]; });
                 break;
@@ -125,6 +145,9 @@ export const useNexusStore = create<NexusState>()(
                   if (!msg.mine && s.activePeerId !== msg.peerId)
                     s.unread[msg.peerId] = (s.unread[msg.peerId] ?? 0) + 1;
                 });
+                if (!msg.mine && get().soundsEnabled) {
+                  playReceivedSound();
+                }
                 // In-page notification when tab is backgrounded
                 if (!msg.mine && typeof document !== 'undefined' && !document.hasFocus()) {
                   const peer = get().peers[msg.peerId];
@@ -164,17 +187,25 @@ export const useNexusStore = create<NexusState>()(
 
               case 'call-updated':
                 set(s => { s.activeCall = ev.call; });
-                if (ev.call.state === 'ringing-in' && Notification?.permission === 'granted') {
-                  new Notification(`📞 Incoming ${ev.call.kind} call`, {
-                    body: `${ev.call.peerName} is calling you`,
-                    icon: '/icon-192.png', tag: 'call', requireInteraction: true,
-                  });
+                if (ev.call.state === 'ringing-in') {
+                  if (get().soundsEnabled) startCallRinging();
+                  if (Notification?.permission === 'granted') {
+                    new Notification(`📞 Incoming ${ev.call.kind} call`, {
+                      body: `${ev.call.peerName} is calling you`,
+                      icon: '/icon-192.png', tag: 'call', requireInteraction: true,
+                    });
+                  }
+                } else if (ev.call.state === 'active') {
+                  stopCallRinging();
+                  set(s => { s.stats.callsTotal++; });
+                } else {
+                  stopCallRinging();
                 }
-                if (ev.call.state === 'active') set(s => { s.stats.callsTotal++; });
                 break;
 
               case 'call-ended':
                 set(s => { s.activeCall = null; });
+                stopCallRinging();
                 break;
 
               case 'group-message': {
@@ -233,6 +264,7 @@ export const useNexusStore = create<NexusState>()(
               s.threads[peerId].push({ id: msgId, peerId, mine: true, text, ts: Date.now(), read: true, replyTo });
               s.stats.msgsSent++;
             });
+            if (get().soundsEnabled) playSentSound();
           } catch (e) { console.error('[store] sendMessage', e); }
         },
 
@@ -248,10 +280,11 @@ export const useNexusStore = create<NexusState>()(
             await m.sendFile(peerId, file, (pct, speed, eta) => {
               set(s => {
                 const m2 = s.threads[peerId]?.find(m => m.id === fileId);
-                if (m2?.file) { m2.file.progress = pct; m2.file.speed = speed; m2.file.eta = eta; m2.file.done = pct === 100; }
+                if (m2?.file) { m2.file.progress = pct; m2.file.speed = speed; m2.file.done = pct === 100; }
               });
             });
             set(s => { s.stats.filesShared++; s.stats.bytesShared += file.size; });
+            if (get().soundsEnabled) playSentSound();
           } catch (e) { console.error('[store] sendFile', e); }
         },
 
@@ -263,7 +296,10 @@ export const useNexusStore = create<NexusState>()(
             if (!s.threads[peerId]) s.threads[peerId] = [];
             s.threads[peerId].push({ id: voiceId, peerId, mine: true, voice: { durationMs, progress: 100, done: true }, ts: Date.now(), read: true });
           });
-          try { await m.sendVoiceMessage(peerId, blob, durationMs); }
+          try {
+            await m.sendVoiceMessage(peerId, blob, durationMs);
+            if (get().soundsEnabled) playSentSound();
+          }
           catch (e) { console.error('[store] sendVoiceMsg', e); }
         },
 
@@ -316,13 +352,18 @@ export const useNexusStore = create<NexusState>()(
           set(s => { s.pushEnabled = ok; });
           return ok;
         },
+
+        toggleSounds() { set(s => { s.soundsEnabled = !s.soundsEnabled; }); },
+        togglePrivacy() { set(s => { s.privacyMode = !s.privacyMode; }); },
       }),
       {
         name: 'nexus-v2',
         partialize: (s): Partial<State> => ({
-          myName:      s.myName,
-          pushEnabled: s.pushEnabled,
-          stats:       s.stats,
+          myName:        s.myName,
+          pushEnabled:   s.pushEnabled,
+          soundsEnabled: s.soundsEnabled,
+          privacyMode:   s.privacyMode,
+          stats:         s.stats,
         }),
       }
     )

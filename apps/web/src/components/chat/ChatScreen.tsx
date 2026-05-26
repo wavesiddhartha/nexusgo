@@ -347,6 +347,7 @@ export function ChatScreen() {
   const [showModal,  setShowModal] = useState(false);
   const [showVoice,  setShowVoice] = useState(false);
   const [replyTarget, setReplyTarget] = useState<LocalMessage | null>(null);
+  const [showTrust,  setShowTrust]  = useState(false);
 
   const taRef         = useRef<HTMLTextAreaElement>(null);
   const msgRef        = useAutoscroll([thread.length, activePeerId]);
@@ -357,6 +358,21 @@ export function ChatScreen() {
   useEffect(() => {
     if (activePeerId) markRead(activePeerId);
   }, [activePeerId, thread.length, markRead]);
+
+  // ── Auto Reconnect ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (activePeerId && peer && !peer.connected) {
+      const connectToPeer = useNexusStore.getState().connectToPeer;
+      connectToPeer(activePeerId);
+      const timer = setInterval(() => {
+        const currentPeer = useNexusStore.getState().peers[activePeerId];
+        if (currentPeer && !currentPeer.connected) {
+          connectToPeer(activePeerId);
+        }
+      }, 5000);
+      return () => clearInterval(timer);
+    }
+  }, [activePeerId, peer?.connected]);
 
   const handleSend = useCallback(() => {
     const v = text.trim();
@@ -440,8 +456,21 @@ export function ChatScreen() {
           {/* Name + meta */}
           <div className="flex-1 min-w-0">
             <div className="text-[14px] font-medium text-black">{peer.name}</div>
-            <div className="text-[10px] font-mono font-light text-[#a0a09a]">
-              WebRTC · E2E{peer.pingMs != null ? ` · ${peer.pingMs}ms` : ''}
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-[10px] font-mono font-light text-[#a0a09a]">
+                WebRTC{peer.pingMs != null ? ` · ${peer.pingMs}ms` : ''}
+              </span>
+              <button
+                onClick={() => setShowTrust(true)}
+                className="flex items-center gap-0.5 bg-[#f0f0ee] border border-[#e4e4e0] px-1.5 py-0.5 rounded-[6px] hover:bg-[#e4e4e0] active:scale-95 transition-all cursor-pointer"
+                title="End-to-End Encrypted via DTLS-SRTP"
+              >
+                <svg className="w-[8.5px] h-[8.5px] stroke-[#22c55e] fill-none" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                  <rect x="3" y="11" width="18" height="11" rx="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+                <span className="text-[8.5px] font-mono text-[#22c55e] tracking-wider uppercase font-semibold">E2EE</span>
+              </button>
             </div>
           </div>
 
@@ -471,10 +500,10 @@ export function ChatScreen() {
           )}
 
           {/* Online indicator */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <div className={cn('w-[5px] h-[5px] rounded-full', peer.connected ? 'bg-[#22c55e]' : 'bg-[#d0d0cc]')} />
+          <div className="flex items-center gap-1.5 shrink-0 select-none">
+            <div className={cn('w-[5.5px] h-[5.5px] rounded-full', peer.connected ? 'bg-[#22c55e]' : 'bg-[#eab308] animate-pulse')} />
             <span className="text-[10px] font-mono font-light text-[#a0a09a]">
-              {peer.connected ? 'online' : 'offline'}
+              {peer.connected ? 'online' : 'connecting…'}
             </span>
           </div>
         </div>
@@ -609,6 +638,46 @@ export function ChatScreen() {
       {/* File modal */}
       <AnimatePresence>
         {showModal && <FileModal onClose={() => setShowModal(false)} onSelect={handleFile} />}
+      </AnimatePresence>
+
+      {/* E2E Trust Popup Modal */}
+      <AnimatePresence>
+        {showTrust && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.3)' }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowTrust(false)}
+          >
+            <motion.div
+              className="bg-white border border-[#ebebea] rounded-[24px] p-6 max-w-sm w-full text-center relative shadow-2xl"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="w-12 h-12 rounded-full bg-[#f0f0ee] flex items-center justify-center mx-auto mb-4 border border-[#e4e4e0]">
+                <svg className="w-5 h-5 stroke-black fill-none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                  <rect x="3" y="11" width="18" height="11" rx="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+              </div>
+              <h4 className="text-[15px] font-medium text-black mb-2">100% Peer-to-Peer Encrypted</h4>
+              <p className="text-[12px] font-mono font-light text-[#5a5a55] leading-relaxed mb-5">
+                NEXUS establishes a direct WebRTC DataChannel connection between your devices. All messages, calls, and files are encrypted end-to-end via DTLS-SRTP. Zero data ever touches any cloud server.
+              </p>
+              <button
+                onClick={() => setShowTrust(false)}
+                className="w-full py-2.5 bg-[#080808] text-white rounded-[12px] text-[12px] font-medium active:scale-95 transition-transform cursor-pointer"
+              >
+                Close
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );

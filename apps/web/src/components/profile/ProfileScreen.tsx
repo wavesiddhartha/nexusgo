@@ -30,6 +30,10 @@ export function ProfileScreen() {
   const peerCount   = useNexusStore(selectConnected);
   const pushEnabled = useNexusStore(s => s.pushEnabled);
   const enablePush  = useNexusStore(s => s.enablePush);
+  const soundsEnabled = useNexusStore(s => s.soundsEnabled);
+  const toggleSounds  = useNexusStore(s => s.toggleSounds);
+  const privacyMode   = useNexusStore(s => s.privacyMode);
+  const togglePrivacy = useNexusStore(s => s.togglePrivacy);
 
   const [editing,       setEditing]       = useState(false);
   const [nameVal,       setNameVal]       = useState(myName);
@@ -37,7 +41,6 @@ export function ProfileScreen() {
   const [enablingPush,  setEnablingPush]  = useState(false);
   const [discoverOn,    setDiscoverOn]    = useState(true);
   const [autoClear,     setAutoClear]     = useState(false);
-  const [soundOn,       setSoundOn]       = useState(true);
 
   const qrRef = useRef<HTMLCanvasElement>(null);
 
@@ -253,9 +256,10 @@ export function ProfileScreen() {
             </div>
 
             {[
-              { icon: 'wifi',    label: 'Discovery broadcast', sub: 'Appear to nearby peers',    val: discoverOn, set: setDiscoverOn },
-              { icon: 'trash',   label: 'Auto-clear messages', sub: 'Delete after session ends', val: autoClear,  set: setAutoClear  },
-              { icon: 'speaker', label: 'Sound on calls',      sub: 'Ringtone for incoming',     val: soundOn,    set: setSoundOn    },
+              { icon: 'wifi',    label: 'Discovery broadcast', sub: 'Appear to nearby peers',    val: discoverOn,    set: setDiscoverOn },
+              { icon: 'trash',   label: 'Auto-clear messages', sub: 'Delete after session ends', val: autoClear,     set: setAutoClear  },
+              { icon: 'speaker', label: 'Synthesized sounds',  sub: 'Ambient UI sound chimes',   val: soundsEnabled, set: toggleSounds  },
+              { icon: 'wifi',    label: 'TURN Privacy Mode',   sub: 'Route all traffic via TURN',val: privacyMode,   set: togglePrivacy },
             ].map(({ icon, label, sub, val, set }) => (
               <div key={label} className="flex items-center gap-3 px-4 py-3.5">
                 <div className="w-8 h-8 rounded-[8px] bg-white border border-[#ebebea] flex items-center justify-center shrink-0">

@@ -164,10 +164,10 @@ export function DiscoverScreen() {
         {/* Dynamic Declarative Connections and Animated Data Signal Packets */}
         <svg className="absolute inset-0 w-full h-full block pointer-events-none">
           <defs>
-            <marker id="arrow" viewBox="0 0 10 10" refX="15" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <marker id="arrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
               <path d="M 0 2 L 7 5 L 0 8 z" fill="#22c55e" />
             </marker>
-            <marker id="arrow-connecting" viewBox="0 0 10 10" refX="15" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <marker id="arrow-connecting" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
               <path d="M 0 2 L 7 5 L 0 8 z" fill="#f59e0b" />
             </marker>
           </defs>
@@ -179,22 +179,42 @@ export function DiscoverScreen() {
             const cx = dims.w / 2;
             const cy = dims.h / 2;
 
-            // Compute quadratic bezier curve for smooth organic wire look
+            // Me node has R=26 (52px wide), Peer node has R=22 (44px wide)
+            const R_center = 26;
+            const R_peer = 22;
+
             const dx = nx - cx;
             const dy = ny - cy;
             const dist = Math.sqrt(dx * dx + dy * dy);
 
-            let pathD = `M ${cx} ${cy} L ${nx} ${ny}`;
+            let startX = cx;
+            let startY = cy;
+            let endX = nx;
+            let endY = ny;
+
             if (dist > 0) {
-              const midX = (cx + nx) / 2;
-              const midY = (cy + ny) / 2;
-              const px = -dy / dist;
-              const py = dx / dist;
+              startX = cx + (dx / dist) * R_center;
+              startY = cy + (dy / dist) * R_center;
+              endX = nx - (dx / dist) * R_peer;
+              endY = ny - (dy / dist) * R_peer;
+            }
+
+            // Compute quadratic bezier curve for smooth organic wire look between boundaries
+            const dx_shift = endX - startX;
+            const dy_shift = endY - startY;
+            const dist_shift = Math.sqrt(dx_shift * dx_shift + dy_shift * dy_shift);
+
+            let pathD = `M ${startX} ${startY} L ${endX} ${endY}`;
+            if (dist_shift > 0) {
+              const midX = (startX + endX) / 2;
+              const midY = (startY + endY) / 2;
+              const px = -dy_shift / dist_shift;
+              const py = dx_shift / dist_shift;
               const curveDirection = i % 2 === 0 ? 1 : -1;
-              const offset = dist * 0.05 * curveDirection;
+              const offset = dist_shift * 0.05 * curveDirection;
               const controlX = midX + px * offset;
               const controlY = midY + py * offset;
-              pathD = `M ${cx} ${cy} Q ${controlX} ${controlY} ${nx} ${ny}`;
+              pathD = `M ${startX} ${startY} Q ${controlX} ${controlY} ${endX} ${endY}`;
             }
 
             const isSel = p.id === selectedId;

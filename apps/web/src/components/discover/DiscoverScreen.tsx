@@ -132,26 +132,6 @@ export function DiscoverScreen() {
 
   return (
     <div className="flex flex-col h-full bg-[#fafaf9]">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-[#f0f0ed]">
-        <div className="flex items-center gap-4 select-none">
-          <span className="text-[14px] font-mono font-bold tracking-[0.25em] text-black uppercase">
-            NEXUS
-          </span>
-          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-green-50 rounded-full border border-green-100/50">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e] animate-pulse" />
-            <span className="text-[10px] font-mono font-medium text-green-700">
-              {peers.length} peer{peers.length !== 1 ? 's' : ''} nearby
-            </span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 select-none">
-          <div className="px-3.5 py-1 bg-[#f5f5f3] rounded-full border border-[#ebebe8] text-[11px] font-mono text-black">
-            {myName || 'you'}
-          </div>
-        </div>
-      </div>
-
       {/* Canvas */}
       <div
         ref={canvasRef}

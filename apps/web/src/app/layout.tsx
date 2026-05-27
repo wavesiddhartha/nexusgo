@@ -22,6 +22,11 @@ export const metadata: Metadata = {
   description: 'Instant, private, serverless communication. No accounts. No cloud.',
   manifest:    '/manifest.json',
   metadataBase: new URL('https://nexusgo.me'),
+  icons: {
+    icon: '/icon-192.png',
+    shortcut: '/favicon.ico',
+    apple: '/icon-192.png',
+  },
   openGraph: {
     title:       'nexusgo',
     description: 'Instant peer-to-peer communication. No accounts. No cloud.',

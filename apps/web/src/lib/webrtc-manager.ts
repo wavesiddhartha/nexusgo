@@ -24,6 +24,19 @@ import type {
 } from '@nexus/shared';
 import { nanoid } from 'nanoid';
 
+function deterministicId(key: string): string {
+  let hash1 = 5381;
+  let hash2 = 89;
+  for (let i = 0; i < key.length; i++) {
+    const char = key.charCodeAt(i);
+    hash1 = (hash1 * 33) ^ char;
+    hash2 = (hash2 * 17) ^ char;
+  }
+  const part1 = (hash1 >>> 0).toString(36).padStart(8, '0');
+  const part2 = (hash2 >>> 0).toString(36).padStart(8, '0');
+  return (part1 + part2).slice(0, 16);
+}
+
 // ── Public types ──────────────────────────────────────────────────────────────
 export interface RemotePeer {
   id: string;
@@ -170,6 +183,8 @@ export class WebRTCManager {
   private vapidKey       = '';
   private pushSub:       PushSubscription | null = null;
   private pendingRoomInvites: string[] = [];
+  private globalInFiles: Map<string, IncomingFile> = new Map();
+  private sendingOffsets: Map<string, number> = new Map();
 
   constructor(signalingUrl: string) {
     this.sigUrl  = signalingUrl;
@@ -244,7 +259,8 @@ export class WebRTCManager {
       conn.dc.bufferedAmountLowThreshold = 2 * 1024 * 1024; // 2 MB low threshold
     }
 
-    const fileId      = nanoid(16);
+    // Deterministic 16-char ID based on name, size, lastModified for checkpoint recovery!
+    const fileId = deterministicId(`${file.name}_${file.size}_${file.lastModified}`);
     const BINARY_CHUNK_SIZE = 256 * 1024; // 256 KB for ultra fast P2P transfers
     const totalChunks = Math.ceil(file.size / BINARY_CHUNK_SIZE);
     this.dc_send(conn, {
@@ -255,15 +271,19 @@ export class WebRTCManager {
       batchId,
     });
 
+    // Wait up to 120ms for potential offset reply from receiver (checkpoint resuming)
+    await new Promise(r => setTimeout(r, 120));
+    const offset = this.sendingOffsets.get(fileId) ?? 0;
+
     const t0       = Date.now();
-    let bytesSent  = 0;
+    let bytesSent  = offset * BINARY_CHUNK_SIZE;
 
     // Convert fileId (nanoID is 16 chars) to a fixed 16-byte array
     const fileIdBytes = new Uint8Array(16);
     const encodedId = new TextEncoder().encode(fileId);
     fileIdBytes.set(encodedId.slice(0, 16));
 
-    for (let i = 0; i < totalChunks; i++) {
+    for (let i = offset; i < totalChunks; i++) {
       // Hardware-level Backpressure — wait for buffer depletion
       if (conn.dc && conn.dc.bufferedAmount > 8 * 1024 * 1024) { // 8 MB buffer threshold
         await new Promise<void>(resolve => {
@@ -960,6 +980,43 @@ export class WebRTCManager {
       // ── File transfer ─────────────────────────────────────────────────────
       case 'file-meta': {
         const startTransfer = async () => {
+          // Check if we already have this file partially downloaded in our globalInFiles!
+          const existing = this.globalInFiles.get(msg.fileId);
+          if (existing) {
+            // Checkpoint resume! Set it on the active peer connection
+            conn.inFiles.set(msg.fileId, existing);
+            
+            // Notify the sender with the offset to resume from
+            this.dc_send(conn, {
+              type: 'file-offset',
+              fileId: msg.fileId,
+              offset: existing.received,
+            });
+
+            // Emit the start/resume batch-progress or file-progress
+            if (msg.batchId) {
+              this.emit({
+                type: 'batch-progress',
+                peerId: pid,
+                batchId: msg.batchId,
+                totalFiles: 0,
+                uploadedCount: 0,
+                downloadedCount: -1, // signal active file name in store
+                activeFileName: msg.name,
+                activeProgress: Math.round((existing.received / existing.chunks.length) * 100) || 0,
+                done: false
+              });
+            } else {
+              this.emit({
+                type: 'file-progress',
+                peerId: pid,
+                fileId: msg.fileId,
+                progress: Math.round((existing.received / existing.chunks.length) * 100) || 0
+              });
+            }
+            return;
+          }
+
           let writableStream: any = null;
           
           // 1. If part of a batch or directory picker is active
@@ -999,14 +1056,17 @@ export class WebRTCManager {
             }
           }
 
-          conn.inFiles.set(msg.fileId, {
+          const incoming: IncomingFile = {
             name: msg.name, size: msg.size, mime: msg.mime,
             chunks: [],
             binaryChunks: [],
             writableStream,
             received: 0, startedAt: Date.now(), bytesIn: 0,
             batchId: msg.batchId,
-          });
+          };
+
+          conn.inFiles.set(msg.fileId, incoming);
+          this.globalInFiles.set(msg.fileId, incoming);
 
           // 3. Emit message only if NOT a batch (prevent chat clutter)
           if (!msg.batchId) {
@@ -1082,6 +1142,7 @@ export class WebRTCManager {
                 this.emit({ type: 'file-progress', peerId: pid, fileId: msg.fileId, progress: 100 });
               }
               conn.inFiles.delete(msg.fileId);
+              this.globalInFiles.delete(msg.fileId);
             } catch (err) {
               console.error("Error closing writable stream:", err);
             }
@@ -1116,6 +1177,7 @@ export class WebRTCManager {
             a.click();
             document.body.removeChild(a);
             conn.inFiles.delete(msg.fileId);
+            this.globalInFiles.delete(msg.fileId);
           })();
         } else {
           const allReceived = tf.chunks.every(c => c !== null);
@@ -1160,11 +1222,17 @@ export class WebRTCManager {
               a.click();
               document.body.removeChild(a);
               conn.inFiles.delete(msg.fileId);
+              this.globalInFiles.delete(msg.fileId);
             })().catch(() => {});
           } else {
             conn.inFiles.delete(msg.fileId);
+            this.globalInFiles.delete(msg.fileId);
           }
         }
+        break;
+      }
+      case 'file-offset': {
+        this.sendingOffsets.set(msg.fileId, msg.offset);
         break;
       }
 

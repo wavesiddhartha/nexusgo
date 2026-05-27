@@ -96,10 +96,12 @@ export interface GroupCallLeave  { type: 'group-call-leave';  roomId: string; le
 export interface ReactionMsg     { type: 'reaction';          msgId: string; emoji: string }
 export interface GroupInviteMsg  { type: 'group-invite';      roomId: string; roomName: string }
 
+export interface FileOffsetMsg    { type: 'file-offset';  fileId: string; offset: number }
+
 export type DataMsg =
   | HelloMsg | ChatMsg | TypingMsg | ReadMsg
   | PingMsg  | PongMsg
-  | FileMeta | FileChunk | FileDone | BatchMetaMsg | BatchProgressMsg
+  | FileMeta | FileChunk | FileDone | FileOffsetMsg | BatchMetaMsg | BatchProgressMsg
   | VoiceMeta | VoiceChunk
   | CallInvite | CallAnswer | CallEnd | CallBusy
   | GroupMsg
@@ -139,6 +141,14 @@ export const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun1.l.google.com:19302'       },
   { urls: 'stun:global.stun.twilio.com:3478'    },
   { urls: 'stun:stun.nextcloud.com:443'         },
-  // ⚠ Production: add TURN servers from Metered.ca or self-hosted coturn
-  // { urls: 'turn:your-turn.nexusgo.me:3478', username: 'nexus', credential: 'xxx' }
+  // 🌐 High-availability free public TURN relays provided by Metered.ca
+  { 
+    urls: [
+      'turn:openrelay.metered.ca:80',
+      'turn:openrelay.metered.ca:443',
+      'turns:openrelay.metered.ca:443'
+    ],
+    username: 'openrelay',
+    credential: 'openrelay'
+  }
 ];

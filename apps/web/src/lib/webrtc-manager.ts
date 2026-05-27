@@ -100,6 +100,9 @@ export type ManagerEvent =
   | { type: 'group-message';       roomId: string; msg: LocalMessage }
   | { type: 'room-updated';        room: GroupRoom }
   | { type: 'room-removed';        roomId: string }
+  | { type: 'group-call-invite';   roomId: string; callerId: string; callerName: string }
+  | { type: 'group-call-join';     roomId: string; joinerId: string }
+  | { type: 'group-call-leave';    roomId: string; leaverId: string }
   | { type: 'ws-connected' }
   | { type: 'ws-disconnected' };
 
@@ -588,6 +591,17 @@ export class WebRTCManager {
         this.activeCall = { ...this.activeCall, remoteStream: streams[0] };
         this.emit({ type: 'call-updated', call: { ...this.activeCall } });
       }
+      if (streams[0]) {
+        const existing = document.getElementById(`audio-${peerId}`) as HTMLAudioElement;
+        if (!existing) {
+          const audio = document.createElement('audio');
+          audio.id = `audio-${peerId}`;
+          audio.srcObject = streams[0];
+          audio.autoplay = true;
+          document.body.appendChild(audio);
+          audio.play().catch(() => {});
+        }
+      }
     };
 
     pc.ondatachannel = ({ channel }) => this.setupDC(conn, channel);
@@ -796,6 +810,18 @@ export class WebRTCManager {
         this.emit({ type: 'group-message', roomId: msg.roomId, msg: { id: msg.msgId, peerId: msg.senderId, mine: false, text: msg.text, ts: msg.ts, read: false } });
         break;
       }
+      case 'group-call-invite': {
+        this.emit({ type: 'group-call-invite', roomId: msg.roomId, callerId: msg.callerId, callerName: msg.callerName });
+        break;
+      }
+      case 'group-call-join': {
+        this.emit({ type: 'group-call-join', roomId: msg.roomId, joinerId: msg.joinerId });
+        break;
+      }
+      case 'group-call-leave': {
+        this.emit({ type: 'group-call-leave', roomId: msg.roomId, leaverId: msg.leaverId });
+        break;
+      }
     }
   }
 
@@ -804,6 +830,10 @@ export class WebRTCManager {
     if (!conn) return;
     if (conn.pingTimer) clearInterval(conn.pingTimer);
     try { conn.pc.close(); } catch {}
+    const audio = document.getElementById(`audio-${id}`);
+    if (audio) {
+      try { (audio as HTMLAudioElement).srcObject = null; audio.remove(); } catch {}
+    }
     this.peers.delete(id);
     this.emit({ type: 'peer-removed', peerId: id });
   }

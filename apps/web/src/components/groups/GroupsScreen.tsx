@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNexusStore, selectRoomList, selectGroupThread } from '@/store/nexus.store';
 import { useAutoscroll, useAutoResize } from '@/hooks';
@@ -103,15 +103,128 @@ function RoomModal({ onClose }: { onClose: () => void }) {
 // ── Group chat ─────────────────────────────────────────────────────────────────
 function GroupChat({ room, onBack }: { room: GroupRoom; onBack: () => void }) {
   const myId          = useNexusStore(s => s.myId);
+  const myName        = useNexusStore(s => s.myName);
+  const manager       = useNexusStore(s => s.manager);
   const sendGroupMsg  = useNexusStore(s => s.sendGroupMessage);
   const leaveRoom     = useNexusStore(s => s.leaveRoom);
   const thread        = useNexusStore(selectGroupThread(room.id));
 
   const [text,         setText]         = useState('');
   const [showMembers,  setShowMembers]  = useState(false);
+  
+  // Group Voice Call states
+  const [callState,    setCallState]    = useState<'active' | null>(null);
+  const [callInvite,   setCallInvite]   = useState<{ id: string; callerName: string } | null>(null);
+  const [callMembers,  setCallMembers]  = useState<string[]>([]);
+  const [localMute,    setLocalMute]    = useState(false);
+  const localStreamRef                  = useRef<MediaStream | null>(null);
+
   const taRef     = useRef<HTMLTextAreaElement>(null);
   const msgRef    = useAutoscroll([thread.length]);
   const autoResize = useAutoResize(taRef);
+
+  // Group Call signaling listeners
+  useEffect(() => {
+    if (!manager) return;
+    const unsub = manager.on((ev: any) => {
+      if (ev.type === 'group-call-invite' && ev.roomId === room.id) {
+        if (ev.callerId !== myId) {
+          setCallInvite({ id: ev.callerId, callerName: ev.callerName });
+          setCallMembers(prev => [...new Set([...prev, ev.callerId])]);
+        }
+      }
+      if (ev.type === 'group-call-join' && ev.roomId === room.id) {
+        if (ev.joinerId !== myId) {
+          setCallMembers(prev => [...new Set([...prev, ev.joinerId])]);
+          toast(`${room.members.find(m => m.id === ev.joinerId)?.name || 'Someone'} joined conference`);
+        }
+      }
+      if (ev.type === 'group-call-leave' && ev.roomId === room.id) {
+        setCallMembers(prev => prev.filter(id => id !== ev.leaverId));
+      }
+    });
+    return () => {
+      unsub();
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(t => t.stop());
+      }
+    };
+  }, [manager, room.id, myId]);
+
+  const startCall = async () => {
+    if (!manager) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStreamRef.current = stream;
+      setCallState('active');
+      setLocalMute(false);
+
+      room.members.forEach(member => {
+        const conn = (manager as any).peers?.get(member.id);
+        if (conn?.dc?.readyState === 'open') {
+          (manager as any).dc_send(conn, { type: 'group-call-invite', roomId: room.id, callerId: myId, callerName: myName });
+          stream.getTracks().forEach(t => conn.pc.addTrack(t, stream));
+        }
+      });
+      toast.success('Group voice call started ✓');
+    } catch (e: any) {
+      toast.error('Microphone permission denied');
+    }
+  };
+
+  const joinCall = async () => {
+    if (!manager) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStreamRef.current = stream;
+      setCallState('active');
+      setLocalMute(false);
+      setCallInvite(null);
+
+      room.members.forEach(member => {
+        const conn = (manager as any).peers?.get(member.id);
+        if (conn?.dc?.readyState === 'open') {
+          (manager as any).dc_send(conn, { type: 'group-call-join', roomId: room.id, joinerId: myId });
+          stream.getTracks().forEach(t => conn.pc.addTrack(t, stream));
+        }
+      });
+      toast.success('Joined group conference ✓');
+    } catch (e: any) {
+      toast.error('Microphone permission denied');
+    }
+  };
+
+  const toggleMic = () => {
+    if (localStreamRef.current) {
+      const tracks = localStreamRef.current.getAudioTracks();
+      tracks.forEach(t => t.enabled = !t.enabled);
+      setLocalMute(!localMute);
+      toast(localMute ? 'Microphone unmuted' : 'Microphone muted');
+    }
+  };
+
+  const leaveCall = () => {
+    if (!manager) return;
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(t => t.stop());
+      localStreamRef.current = null;
+    }
+    room.members.forEach(member => {
+      const conn = (manager as any).peers?.get(member.id);
+      if (conn?.dc?.readyState === 'open') {
+        (manager as any).dc_send(conn, { type: 'group-call-leave', roomId: room.id, leaverId: myId });
+        const senders = conn.pc.getSenders();
+        senders.forEach((sender: any) => {
+          if (sender.track?.kind === 'audio') {
+            conn.pc.removeTrack(sender);
+          }
+        });
+      }
+    });
+    setCallState(null);
+    setCallMembers([]);
+    toast('Left group conference');
+  };
 
   const send = useCallback(() => {
     const v = text.trim();
@@ -159,6 +272,20 @@ function GroupChat({ room, onBack }: { room: GroupRoom; onBack: () => void }) {
           className="px-2.5 py-1 rounded-full border border-[#e4e4e0] text-[9px] font-mono font-light text-[#8a8a84] hover:border-black hover:text-black transition-colors shrink-0">
           Copy ID
         </button>
+
+        {/* Group Voice Call trigger */}
+        {room.members.filter(m => m.connected).length > 0 && !callState && (
+          <button
+            onClick={startCall}
+            className="w-8 h-8 rounded-[9px] flex items-center justify-center hover:bg-[#f5f5f3] active:bg-[#f0f0ee] transition-colors shrink-0"
+            title="Start group call"
+          >
+            <svg className="w-[15px] h-[15px] stroke-[#5a5a55]" fill="none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6 6l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+            </svg>
+          </button>
+        )}
+
         <button onClick={handleLeave}
           className="w-8 h-8 rounded-[9px] flex items-center justify-center hover:bg-[#fee2e2] active:bg-[#fee2e2] transition-colors shrink-0" title="Leave room">
           <svg className="w-[14px] h-[14px] stroke-[#ef4444]" fill="none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
@@ -169,32 +296,81 @@ function GroupChat({ room, onBack }: { room: GroupRoom; onBack: () => void }) {
         </button>
       </div>
 
-      {/* Members panel */}
-      <AnimatePresence>
-        {showMembers && (
-          <motion.div
-            className="border-b border-[#ebebea] bg-[#f9f9f8] px-4 py-3 overflow-hidden"
-            initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.18 }}
-          >
-            <div className="flex flex-wrap gap-2">
-              {room.members.map(m => (
-                <div key={m.id}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white border border-[#e8e8e4]">
-                  <div className={cn(
-                    'w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-medium',
-                    m.id === myId ? 'bg-[#080808] text-white' : 'bg-[#f0f0ee] text-[#5a5a55]'
-                  )}>
-                    {m.initials}
+      {/* Active Conference bar */}
+      {callState && (
+        <div className="bg-[#f9f9f8] border-b border-[#ebebea] px-4 py-3 flex items-center justify-between animate-fadeIn select-none">
+          <div className="flex items-center gap-3">
+            <div className="flex -space-x-1.5 overflow-hidden">
+              <div className="w-8 h-8 rounded-full bg-[#080808] text-white border-2 border-white flex items-center justify-center text-[10px] font-medium z-20">
+                yo
+              </div>
+              {callMembers.map(mid => {
+                const member = room.members.find(m => m.id === mid);
+                if (!member) return null;
+                return (
+                  <div
+                    key={mid}
+                    className="w-8 h-8 rounded-full bg-white border-2 border-white flex items-center justify-center text-[10px] font-medium relative shadow-sm"
+                    style={{ zIndex: 10 }}
+                  >
+                    {member.initials}
                   </div>
-                  <span className="text-[11px] font-medium text-black">{m.id === myId ? 'You' : m.name}</span>
-                  <div className={cn('w-[4px] h-[4px] rounded-full', m.connected ? 'bg-[#22c55e]' : 'bg-[#d0d0cc]')} />
-                </div>
-              ))}
+                );
+              })}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <div>
+              <h4 className="text-[12px] font-medium text-black">Voice Call Active</h4>
+              <p className="text-[10px] font-mono font-light text-[#22c55e] mt-0.5">{callMembers.length + 1} connected</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleMic}
+              className={cn(
+                "w-8 h-8 rounded-[9px] flex items-center justify-center transition-colors border",
+                localMute ? "bg-red-50 border-red-200 text-red-500" : "bg-white border-[#e4e4e0] text-[#5a5a55]"
+              )}
+            >
+              {localMute ? (
+                <svg className="w-[14px] h-[14px] stroke-red-500 fill-none" strokeWidth="2" viewBox="0 0 24 24"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+              ) : (
+                <svg className="w-[14px] h-[14px] stroke-current fill-none" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+              )}
+            </button>
+            <button
+              onClick={leaveCall}
+              className="w-8 h-8 rounded-[9px] bg-red-500 border border-red-600 flex items-center justify-center text-white active:scale-90 transition-transform"
+            >
+              <svg className="w-[14px] h-[14px] stroke-white fill-none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                <path d="m16.5 6.5-2.3 2.3a3 3 0 0 0 0 4.24l1.42 1.42a3 3 0 0 1 0 4.24l-1.42 1.42a3 3 0 0 1-4.24 0L8.5 18.5a3 3 0 0 0-4.24 0L2 20.76"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Group Call active Invitation banner */}
+      {callInvite && !callState && (
+        <div className="mx-4 my-2.5 bg-[#fefefe] border border-amber-400/35 rounded-[18px] p-3.5 flex items-center justify-between shadow-[0_4px_16px_rgba(234,179,8,0.06)] animate-fadeIn select-none">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center animate-pulse shrink-0">
+              <svg className="w-4 h-4 stroke-[#eab308]" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6 6l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+              </svg>
+            </div>
+            <div>
+              <h4 className="text-[13px] font-medium text-black">Group Voice Call Active</h4>
+              <p className="text-[10px] font-mono font-light text-[#a0a09a] mt-0.5">Started by {callInvite.callerName}</p>
+            </div>
+          </div>
+          <button
+            onClick={joinCall}
+            className="px-4 py-2 bg-[#22c55e] text-white text-[12px] font-medium rounded-[10px] active:scale-95 transition-transform cursor-pointer"
+          >
+            Join Call
+          </button>
+        </div>
+      )}
 
       {/* Messages */}
       <div ref={msgRef} className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-2 scroll-touch" style={{ background: '#fefefe' }}>

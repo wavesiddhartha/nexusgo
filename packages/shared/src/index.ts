@@ -88,6 +88,9 @@ export interface CallAnswer    { type: 'call-answer';  callId: string; accepted:
 export interface CallEnd       { type: 'call-end';     callId: string; reason?: string }
 export interface CallBusy      { type: 'call-busy';    callId: string }
 export interface GroupMsg      { type: 'group-msg';    roomId: string; text: string; ts: number; msgId: string; senderName: string; senderId: string }
+export interface GroupCallInvite { type: 'group-call-invite'; roomId: string; callerId: string; callerName: string }
+export interface GroupCallJoin   { type: 'group-call-join';   roomId: string; joinerId: string }
+export interface GroupCallLeave  { type: 'group-call-leave';  roomId: string; leaverId: string }
 
 export type DataMsg =
   | HelloMsg | ChatMsg | TypingMsg | ReadMsg
@@ -95,7 +98,8 @@ export type DataMsg =
   | FileMeta | FileChunk | FileDone
   | VoiceMeta | VoiceChunk
   | CallInvite | CallAnswer | CallEnd | CallBusy
-  | GroupMsg;
+  | GroupMsg
+  | GroupCallInvite | GroupCallJoin | GroupCallLeave;
 
 // ── Push payload ──────────────────────────────────────────────────────────────
 export interface PushPayload {

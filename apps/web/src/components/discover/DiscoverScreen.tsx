@@ -60,24 +60,45 @@ export function DiscoverScreen() {
     svg.setAttribute('height', String(dims.h));
     const cx = dims.w / 2, cy = dims.h / 2;
 
-    // Peer line connections will meet precisely at the center
+    // Peer connection lines rendered as elegant quadratic bezier curves
     peers.forEach((p, i) => {
       const [fx, fy] = POSITIONS[i % POSITIONS.length];
       const nx = fx * dims.w, ny = fy * dims.h;
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      line.setAttribute('x1', String(cx)); line.setAttribute('y1', String(cy));
-      line.setAttribute('x2', String(nx)); line.setAttribute('y2', String(ny));
+
+      // Calculate a beautiful quadratic bezier curve path with a perpendicular control offset
+      const dx = nx - cx;
+      const dy = ny - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
+      let pathD = `M ${cx} ${cy} L ${nx} ${ny}`; // Fallback to straight line
+      if (dist > 0) {
+        const midX = (cx + nx) / 2;
+        const midY = (cy + ny) / 2;
+        // Perpendicular unit vector
+        const px = -dy / dist;
+        const py = dx / dist;
+        // Alternate curve direction based on peer position index to ensure symmetry
+        const curveDirection = i % 2 === 0 ? 1 : -1;
+        const offset = dist * 0.16 * curveDirection; 
+        const controlX = midX + px * offset;
+        const controlY = midY + py * offset;
+        pathD = `M ${cx} ${cy} Q ${controlX} ${controlY} ${nx} ${ny}`;
+      }
+
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', pathD);
+      path.setAttribute('fill', 'none');
       const sel = p.id === selectedId;
       if (sel) {
-        line.setAttribute('stroke', '#deded8');
-        line.setAttribute('stroke-width', '0.7');
-        line.setAttribute('stroke-dasharray', '4 4');
-        line.classList.add('dash-animate');
+        path.setAttribute('stroke', '#080808'); // High definition contrast for selection
+        path.setAttribute('stroke-width', '0.85');
+        path.setAttribute('stroke-dasharray', '4 4');
+        path.classList.add('dash-animate');
       } else {
-        line.setAttribute('stroke', '#ebebea');
-        line.setAttribute('stroke-width', '0.5');
+        path.setAttribute('stroke', 'rgba(8,8,8,0.06)'); // Soft, premium background line
+        path.setAttribute('stroke-width', '0.65');
       }
-      svg.appendChild(line);
+      svg.appendChild(path);
     });
   }, [peers, dims, selectedId]);
 

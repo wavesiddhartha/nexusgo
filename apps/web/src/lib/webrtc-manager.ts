@@ -56,6 +56,17 @@ export interface LocalMessage {
     progress: number;
     done: boolean;
   };
+  batch?: {
+    id: string;
+    totalFiles: number;
+    uploadedCount: number;
+    downloadedCount: number;
+    activeFileName: string;
+    activeProgress: number;
+    speed?: string;
+    eta?: string;
+    done: boolean;
+  };
   ts: number;
   read: boolean;
   replyTo?: {
@@ -96,6 +107,7 @@ export type ManagerEvent =
   | { type: 'message';             msg: LocalMessage }
   | { type: 'typing';              peerId: string }
   | { type: 'file-progress';       peerId: string; fileId: string; progress: number; url?: string; speed?: string; eta?: string }
+  | { type: 'batch-progress';      peerId: string; batchId: string; totalFiles: number; uploadedCount: number; downloadedCount: number; activeFileName: string; activeProgress: number; speed?: string; eta?: string; done: boolean }
   | { type: 'voice-progress';      peerId: string; voiceId: string; progress: number; url?: string }
   | { type: 'call-updated';        call: ActiveCall }
   | { type: 'call-ended';          callId: string; reason?: string }
@@ -119,6 +131,7 @@ interface IncomingFile {
   received: number;
   startedAt: number;
   bytesIn: number;
+  batchId?: string;
 }
 interface IncomingVoice {
   durationMs: number;
@@ -143,7 +156,7 @@ export class WebRTCManager {
   myName:         string;
 
   private ws:            WebSocket | null = null;
-  private peers:         Map<string, PeerConn> = new Map();
+  public peers:         Map<string, PeerConn> = new Map();
   private handlers:      Array<(ev: ManagerEvent) => void> = [];
   private wsTimer:       ReturnType<typeof setTimeout>  | null = null;
   private hbTimer:       ReturnType<typeof setInterval> | null = null;
@@ -220,6 +233,7 @@ export class WebRTCManager {
     peerId: string,
     file: File,
     onProgress?: (pct: number, speed: string, eta: string) => void,
+    batchId?: string,
   ): Promise<string> {
     const conn = this.requireOpen(peerId);
     const maxLimit = 200 * 1024 * 1024 * 1024; // 200 GB
@@ -230,7 +244,7 @@ export class WebRTCManager {
       conn.dc.bufferedAmountLowThreshold = 2 * 1024 * 1024; // 2 MB low threshold
     }
 
-    const fileId      = nanoid();
+    const fileId      = nanoid(16);
     const BINARY_CHUNK_SIZE = 256 * 1024; // 256 KB for ultra fast P2P transfers
     const totalChunks = Math.ceil(file.size / BINARY_CHUNK_SIZE);
     this.dc_send(conn, {
@@ -238,6 +252,7 @@ export class WebRTCManager {
       name: file.name, size: file.size,
       mime: file.type || 'application/octet-stream',
       totalChunks, chunkSize: BINARY_CHUNK_SIZE,
+      batchId,
     });
 
     const t0       = Date.now();
@@ -306,7 +321,23 @@ export class WebRTCManager {
       const speed   = this.fmtSpeed(bps);
       const eta     = this.fmtETA(remain);
 
-      this.emit({ type: 'file-progress', peerId, fileId, progress: pct, speed, eta });
+      if (batchId) {
+        this.emit({
+          type: 'batch-progress',
+          peerId,
+          batchId,
+          totalFiles: 0,
+          uploadedCount: 0,
+          downloadedCount: -2,
+          activeFileName: file.name,
+          activeProgress: pct,
+          speed,
+          eta,
+          done: false
+        });
+      } else {
+        this.emit({ type: 'file-progress', peerId, fileId, progress: pct, speed, eta });
+      }
       onProgress?.(pct, speed, eta);
 
       // Yield periodically to allow browser UI thread to paint frames smoothly in background
@@ -316,7 +347,23 @@ export class WebRTCManager {
     }
 
     this.dc_send(conn, { type: 'file-done', fileId });
-    this.emit({ type: 'file-progress', peerId, fileId, progress: 100 });
+    if (batchId) {
+      this.emit({
+        type: 'batch-progress',
+        peerId,
+        batchId,
+        totalFiles: 0,
+        uploadedCount: 0,
+        downloadedCount: -3,
+        activeFileName: file.name,
+        activeProgress: 100,
+        speed: '—',
+        eta: '—',
+        done: false
+      });
+    } else {
+      this.emit({ type: 'file-progress', peerId, fileId, progress: 100 });
+    }
     return fileId;
   }
 
@@ -788,14 +835,30 @@ export class WebRTCManager {
     const bps     = tf.bytesIn / elapsed;
     const pct     = Math.round((tf.received / total) * 100);
 
-    this.emit({
-      type: 'file-progress',
-      peerId: pid,
-      fileId,
-      progress: pct,
-      speed: this.fmtSpeed(bps),
-      eta: this.fmtETA((tf.size - tf.bytesIn) / bps)
-    });
+    if (tf.batchId) {
+      this.emit({
+        type: 'batch-progress',
+        peerId: pid,
+        batchId: tf.batchId,
+        totalFiles: 0,
+        uploadedCount: 0,
+        downloadedCount: -2,
+        activeFileName: tf.name,
+        activeProgress: pct,
+        speed: this.fmtSpeed(bps),
+        eta: this.fmtETA((tf.size - tf.bytesIn) / bps),
+        done: false
+      });
+    } else {
+      this.emit({
+        type: 'file-progress',
+        peerId: pid,
+        fileId,
+        progress: pct,
+        speed: this.fmtSpeed(bps),
+        eta: this.fmtETA((tf.size - tf.bytesIn) / bps)
+      });
+    }
 
     if (tf.writableStream) {
       try {
@@ -811,7 +874,7 @@ export class WebRTCManager {
     }
   }
 
-  private dc_send(conn: PeerConn, msg: DataMsg) {
+  public dc_send(conn: PeerConn, msg: DataMsg) {
     if (conn.dc?.readyState === 'open') try { conn.dc.send(JSON.stringify(msg)); } catch {}
   }
 
@@ -842,50 +905,96 @@ export class WebRTCManager {
         this.emit({ type: 'typing', peerId: pid });
         break;
 
+      case 'batch-meta': {
+        const startBatch = async () => {
+          const accept = window.confirm(`${conn.info.name} wants to send you a batch of ${msg.totalFiles} files (${formatBytes(msg.totalSize)}).\n\nSelect OK to save automatically (supports 100GB+ files, direct fast transfer!)\nSelect Cancel to skip`);
+          if (!accept) return;
+
+          if ('showDirectoryPicker' in window) {
+            try {
+              const handle = await (window as any).showDirectoryPicker();
+              conn.directoryHandle = handle;
+            } catch (err) {
+              console.warn("Directory picker cancelled or failed, using fast memory buffer");
+            }
+          }
+          this.emit({
+            type: 'message',
+            msg: {
+              id: msg.batchId,
+              peerId: pid,
+              mine: false,
+              batch: {
+                id: msg.batchId,
+                totalFiles: msg.totalFiles,
+                uploadedCount: 0,
+                downloadedCount: 0,
+                activeFileName: 'Waiting for files…',
+                activeProgress: 0,
+                done: false
+              },
+              ts: Date.now(),
+              read: false
+            }
+          });
+        };
+        startBatch().catch(console.error);
+        break;
+      }
+
+      case 'batch-progress': {
+        this.emit({
+          type: 'batch-progress',
+          peerId: pid,
+          batchId: msg.batchId,
+          totalFiles: 0,
+          uploadedCount: 0,
+          downloadedCount: msg.downloadedCount,
+          activeFileName: '',
+          activeProgress: 0,
+          done: false
+        });
+        break;
+      }
+
       // ── File transfer ─────────────────────────────────────────────────────
       case 'file-meta': {
         const startTransfer = async () => {
-          // If directoryHandle is already set, write directly to folder
+          let writableStream: any = null;
+          
+          // 1. If part of a batch or directory picker is active
           if (conn.directoryHandle) {
             try {
               const fileHandle = await conn.directoryHandle.getFileHandle(msg.name, { create: true });
-              const writableStream = await fileHandle.createWritable();
-              conn.inFiles.set(msg.fileId, {
-                name: msg.name, size: msg.size, mime: msg.mime,
-                chunks: [],
-                binaryChunks: [],
-                writableStream,
-                received: 0, startedAt: Date.now(), bytesIn: 0,
-              });
-              this.emit({ type: 'message', msg: { id: msg.fileId, peerId: pid, mine: false, file: { name: msg.name, size: msg.size, mime: msg.mime, progress: 0, done: false }, ts: Date.now(), read: false } });
-              return;
+              writableStream = await fileHandle.createWritable();
             } catch (err) {
-              console.error("Auto-save folder write failed, falling back to prompt", err);
+              console.error("Auto-save folder write failed", err);
             }
           }
 
-          // Prompt user
-          const accept = window.confirm(`${conn.info.name} wants to send you a file:\n"${msg.name}" (${formatBytes(msg.size)})\n\nSelect OK to save automatically (supports 100GB+ files, direct fast transfer!)\nSelect Cancel to skip`);
-          if (!accept) return;
+          // 2. If NOT part of a batch, prompt user
+          if (!msg.batchId && !conn.directoryHandle) {
+            const accept = window.confirm(`${conn.info.name} wants to send you a file:\n"${msg.name}" (${formatBytes(msg.size)})\n\nSelect OK to save automatically (supports 100GB+ files, direct fast transfer!)\nSelect Cancel to skip`);
+            if (!accept) return;
 
-          let writableStream: any = null;
-          if ('showDirectoryPicker' in window) {
-            const selectDir = window.confirm("Would you like to select a directory to auto-save this and all subsequent files from this peer?");
-            if (selectDir) {
-              try {
-                const handle = await (window as any).showDirectoryPicker();
-                conn.directoryHandle = handle;
-                const fileHandle = await handle.getFileHandle(msg.name, { create: true });
-                writableStream = await fileHandle.createWritable();
-              } catch (err) {
-                console.warn("Directory picker cancelled or failed, using fast memory buffer");
+            if ('showDirectoryPicker' in window) {
+              const selectDir = window.confirm("Would you like to select a directory to auto-save this and all subsequent files from this peer?");
+              if (selectDir) {
+                try {
+                  const handle = await (window as any).showDirectoryPicker();
+                  conn.directoryHandle = handle;
+                  const fileHandle = await handle.getFileHandle(msg.name, { create: true });
+                  writableStream = await fileHandle.createWritable();
+                } catch (err) {
+                  console.warn("Directory picker cancelled or failed, using fast memory buffer");
+                  if (msg.size > 2 * 1024 * 1024 * 1024) {
+                    window.alert("WARNING: Auto-save disabled. Receiving very large files (>2 GB) in-memory may crash your browser tab due to device memory limitations!");
+                  }
+                }
+              } else {
                 if (msg.size > 2 * 1024 * 1024 * 1024) {
                   window.alert("WARNING: Auto-save disabled. Receiving very large files (>2 GB) in-memory may crash your browser tab due to device memory limitations!");
                 }
-              }
-            } else {
-              if (msg.size > 2 * 1024 * 1024 * 1024) {
-                window.alert("WARNING: Auto-save disabled. Receiving very large files (>2 GB) in-memory may crash your browser tab due to device memory limitations!");
               }
             }
           }
@@ -896,8 +1005,26 @@ export class WebRTCManager {
             binaryChunks: [],
             writableStream,
             received: 0, startedAt: Date.now(), bytesIn: 0,
+            batchId: msg.batchId,
           });
-          this.emit({ type: 'message', msg: { id: msg.fileId, peerId: pid, mine: false, file: { name: msg.name, size: msg.size, mime: msg.mime, progress: 0, done: false }, ts: Date.now(), read: false } });
+
+          // 3. Emit message only if NOT a batch (prevent chat clutter)
+          if (!msg.batchId) {
+            this.emit({ type: 'message', msg: { id: msg.fileId, peerId: pid, mine: false, file: { name: msg.name, size: msg.size, mime: msg.mime, progress: 0, done: false }, ts: Date.now(), read: false } });
+          } else {
+            // Emits a batch progression update to register active file starting
+            this.emit({
+              type: 'batch-progress',
+              peerId: pid,
+              batchId: msg.batchId,
+              totalFiles: 0,
+              uploadedCount: 0,
+              downloadedCount: -1, // Special flag to signal active file name change in store
+              activeFileName: msg.name,
+              activeProgress: 0,
+              done: false
+            });
+          }
         };
         startTransfer().catch(console.error);
         break;
@@ -911,7 +1038,24 @@ export class WebRTCManager {
         const elapsed = Math.max((Date.now() - tf.startedAt) / 1000, 0.01);
         const bps     = tf.bytesIn / elapsed;
         const pct     = Math.round((tf.received / tf.chunks.length) * 100);
-        this.emit({ type: 'file-progress', peerId: pid, fileId: msg.fileId, progress: pct, speed: this.fmtSpeed(bps), eta: this.fmtETA((tf.size - tf.bytesIn) / bps) });
+        
+        if (tf.batchId) {
+          this.emit({
+            type: 'batch-progress',
+            peerId: pid,
+            batchId: tf.batchId,
+            totalFiles: 0,
+            uploadedCount: 0,
+            downloadedCount: -2,
+            activeFileName: tf.name,
+            activeProgress: pct,
+            speed: this.fmtSpeed(bps),
+            eta: this.fmtETA((tf.size - tf.bytesIn) / bps),
+            done: false
+          });
+        } else {
+          this.emit({ type: 'file-progress', peerId: pid, fileId: msg.fileId, progress: pct, speed: this.fmtSpeed(bps), eta: this.fmtETA((tf.size - tf.bytesIn) / bps) });
+        }
         break;
       }
       case 'file-done': {
@@ -922,7 +1066,21 @@ export class WebRTCManager {
           (async () => {
             try {
               await tf.writableStream.close();
-              this.emit({ type: 'file-progress', peerId: pid, fileId: msg.fileId, progress: 100 });
+              if (tf.batchId) {
+                this.emit({
+                  type: 'batch-progress',
+                  peerId: pid,
+                  batchId: tf.batchId,
+                  totalFiles: 0,
+                  uploadedCount: 0,
+                  downloadedCount: -3,
+                  activeFileName: tf.name,
+                  activeProgress: 100,
+                  done: false
+                });
+              } else {
+                this.emit({ type: 'file-progress', peerId: pid, fileId: msg.fileId, progress: 100 });
+              }
               conn.inFiles.delete(msg.fileId);
             } catch (err) {
               console.error("Error closing writable stream:", err);
@@ -934,7 +1092,22 @@ export class WebRTCManager {
             const allChunks = binaryChunks.filter(Boolean) as Uint8Array[];
             const blob = new Blob(allChunks as any[], { type: tf.mime });
             const url = URL.createObjectURL(blob);
-            this.emit({ type: 'file-progress', peerId: pid, fileId: msg.fileId, progress: 100, url });
+            
+            if (tf.batchId) {
+              this.emit({
+                type: 'batch-progress',
+                peerId: pid,
+                batchId: tf.batchId,
+                totalFiles: 0,
+                uploadedCount: 0,
+                downloadedCount: -3,
+                activeFileName: tf.name,
+                activeProgress: 100,
+                done: false
+              });
+            } else {
+              this.emit({ type: 'file-progress', peerId: pid, fileId: msg.fileId, progress: 100, url });
+            }
 
             const a = document.createElement('a');
             a.href = url;
@@ -964,7 +1137,21 @@ export class WebRTCManager {
               }
               
               const url = URL.createObjectURL(new Blob(blobs, { type: tf.mime }));
-              this.emit({ type: 'file-progress', peerId: pid, fileId: msg.fileId, progress: 100, url });
+              if (tf.batchId) {
+                this.emit({
+                  type: 'batch-progress',
+                  peerId: pid,
+                  batchId: tf.batchId,
+                  totalFiles: 0,
+                  uploadedCount: 0,
+                  downloadedCount: -3,
+                  activeFileName: tf.name,
+                  activeProgress: 100,
+                  done: false
+                });
+              } else {
+                this.emit({ type: 'file-progress', peerId: pid, fileId: msg.fileId, progress: 100, url });
+              }
 
               const a = document.createElement('a');
               a.href = url;

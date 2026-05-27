@@ -70,7 +70,7 @@ interface Actions {
   setSelectedPeer:  (id: string | null) => void;
   setActiveRoom:    (id: string | null) => void;
   sendMessage:      (peerId: string, text: string, replyTo?: { id: string; senderName: string; text: string }) => void;
-  sendFile:         (peerId: string, file: File) => Promise<void>;
+  sendFile:         (peerId: string, filesOrFile: File | File[]) => Promise<void>;
   sendVoiceMsg:     (peerId: string, blob: Blob, durationMs: number) => Promise<void>;
   sendTyping:       (peerId: string) => void;
   sendReaction:     (peerId: string, msgId: string, emoji: string) => void;
@@ -194,6 +194,34 @@ export const useNexusStore = create<NexusState>()(
                 });
                 break;
 
+              case 'batch-progress':
+                set(s => {
+                  const t = s.threads[ev.peerId];
+                  const m2 = t?.find(m => m.id === ev.batchId);
+                  if (m2?.batch) {
+                    if (ev.downloadedCount === -1) {
+                      m2.batch.activeFileName = ev.activeFileName;
+                      m2.batch.activeProgress = 0;
+                    } else if (ev.downloadedCount === -2) {
+                      m2.batch.activeProgress = ev.activeProgress;
+                      if (ev.speed) m2.batch.speed = ev.speed;
+                      if (ev.eta) m2.batch.eta = ev.eta;
+                    } else if (ev.downloadedCount === -3) {
+                      m2.batch.activeProgress = 100;
+                      m2.batch.downloadedCount += 1;
+                      if (m2.batch.downloadedCount >= m2.batch.totalFiles) {
+                        m2.batch.done = true;
+                      }
+                    } else if (ev.downloadedCount >= 0) {
+                      m2.batch.uploadedCount = ev.downloadedCount;
+                      if (m2.batch.uploadedCount >= m2.batch.totalFiles && m2.batch.downloadedCount >= m2.batch.totalFiles) {
+                        m2.batch.done = true;
+                      }
+                    }
+                  }
+                });
+                break;
+
               case 'voice-progress':
                 set(s => {
                   const t  = s.threads[ev.peerId];
@@ -294,24 +322,118 @@ export const useNexusStore = create<NexusState>()(
           } catch (e) { console.error('[store] sendMessage', e); }
         },
 
-        async sendFile(peerId, file) {
+        async sendFile(peerId, filesOrFile) {
           const m = get().manager;
           if (!m) return;
-          const fileId = nanoid();
-          set(s => {
-            if (!s.threads[peerId]) s.threads[peerId] = [];
-            s.threads[peerId].push({ id: fileId, peerId, mine: true, file: { name: file.name, size: file.size, mime: file.type, progress: 0, done: false }, ts: Date.now(), read: true });
-          });
-          try {
-            await m.sendFile(peerId, file, (pct, speed, eta) => {
-              set(s => {
-                const m2 = s.threads[peerId]?.find(m => m.id === fileId);
-                if (m2?.file) { m2.file.progress = pct; m2.file.speed = speed; m2.file.done = pct === 100; }
+
+          const isBatch = Array.isArray(filesOrFile);
+          if (!isBatch) {
+            const file = filesOrFile;
+            const fileId = nanoid();
+            set(s => {
+              if (!s.threads[peerId]) s.threads[peerId] = [];
+              s.threads[peerId].push({ id: fileId, peerId, mine: true, file: { name: file.name, size: file.size, mime: file.type, progress: 0, done: false }, ts: Date.now(), read: true });
+            });
+            try {
+              await m.sendFile(peerId, file, (pct, speed, eta) => {
+                set(s => {
+                  const m2 = s.threads[peerId]?.find(m => m.id === fileId);
+                  if (m2?.file) { m2.file.progress = pct; m2.file.speed = speed; m2.file.done = pct === 100; }
+                });
+              });
+              set(s => { s.stats.filesShared++; s.stats.bytesShared += file.size; });
+              if (get().soundsEnabled) playSentSound();
+            } catch (e) { console.error('[store] sendFile', e); }
+          } else {
+            const files = filesOrFile;
+            const batchId = nanoid();
+            const totalSize = files.reduce((acc, f) => acc + f.size, 0);
+
+            // Add batch message
+            set(s => {
+              if (!s.threads[peerId]) s.threads[peerId] = [];
+              s.threads[peerId].push({
+                id: batchId,
+                peerId,
+                mine: true,
+                batch: {
+                  id: batchId,
+                  totalFiles: files.length,
+                  uploadedCount: 0,
+                  downloadedCount: 0,
+                  activeFileName: files[0]?.name ?? '',
+                  activeProgress: 0,
+                  done: false
+                },
+                ts: Date.now(),
+                read: true
               });
             });
-            set(s => { s.stats.filesShared++; s.stats.bytesShared += file.size; });
-            if (get().soundsEnabled) playSentSound();
-          } catch (e) { console.error('[store] sendFile', e); }
+
+            // Send batch-meta to the peer
+            const conn = m.peers.get(peerId);
+            if (conn) {
+              m.dc_send(conn, {
+                type: 'batch-meta',
+                batchId,
+                totalFiles: files.length,
+                totalSize
+              });
+            }
+
+            // Loop and send each file sequentially
+            try {
+              for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                
+                // Update currently sending file name
+                set(s => {
+                  const m2 = s.threads[peerId]?.find(m => m.id === batchId);
+                  if (m2?.batch) {
+                    m2.batch.activeFileName = file.name;
+                    m2.batch.activeProgress = 0;
+                  }
+                });
+
+                await m.sendFile(peerId, file, (pct, speed, eta) => {
+                  set(s => {
+                    const m2 = s.threads[peerId]?.find(m => m.id === batchId);
+                    if (m2?.batch) {
+                      m2.batch.activeProgress = pct;
+                      m2.batch.speed = speed;
+                      m2.batch.eta = eta;
+                    }
+                  });
+                }, batchId);
+
+                // Increment uploaded count
+                set(s => {
+                  const m2 = s.threads[peerId]?.find(m => m.id === batchId);
+                  if (m2?.batch) {
+                    m2.batch.uploadedCount = i + 1;
+                    if (i === files.length - 1) {
+                      m2.batch.done = true;
+                    }
+                  }
+                  s.stats.filesShared++;
+                  s.stats.bytesShared += file.size;
+                });
+
+                // Notify receiver about uploaded count
+                if (conn) {
+                  m.dc_send(conn, {
+                    type: 'batch-progress',
+                    batchId,
+                    downloadedCount: i + 1
+                  });
+                }
+              }
+
+              if (get().soundsEnabled) playSentSound();
+            } catch (e) {
+              console.error('[store] sendFile batch', e);
+            }
+          }
         },
 
         async sendVoiceMsg(peerId, blob, durationMs) {

@@ -78,9 +78,11 @@ export interface TypingMsg     { type: 'typing' }
 export interface ReadMsg       { type: 'read';         msgId: string }
 export interface PingMsg       { type: 'ping';         ts: number }
 export interface PongMsg       { type: 'pong';         ts: number }
-export interface FileMeta      { type: 'file-meta';    fileId: string; name: string; size: number; mime: string; totalChunks: number; chunkSize: number }
+export interface FileMeta      { type: 'file-meta';    fileId: string; name: string; size: number; mime: string; totalChunks: number; chunkSize: number; batchId?: string }
 export interface FileChunk     { type: 'file-chunk';   fileId: string; index: number; data: string; total: number }
 export interface FileDone      { type: 'file-done';    fileId: string }
+export interface BatchMetaMsg    { type: 'batch-meta';    batchId: string; totalFiles: number; totalSize: number }
+export interface BatchProgressMsg { type: 'batch-progress'; batchId: string; downloadedCount: number }
 export interface VoiceMeta     { type: 'voice-meta';   voiceId: string; durationMs: number; size: number; totalChunks: number }
 export interface VoiceChunk    { type: 'voice-chunk';  voiceId: string; index: number; data: string; total: number }
 export interface CallInvite    { type: 'call-invite';  callId: string; kind: CallKind; callerName: string }
@@ -97,7 +99,7 @@ export interface GroupInviteMsg  { type: 'group-invite';      roomId: string; ro
 export type DataMsg =
   | HelloMsg | ChatMsg | TypingMsg | ReadMsg
   | PingMsg  | PongMsg
-  | FileMeta | FileChunk | FileDone
+  | FileMeta | FileChunk | FileDone | BatchMetaMsg | BatchProgressMsg
   | VoiceMeta | VoiceChunk
   | CallInvite | CallAnswer | CallEnd | CallBusy
   | GroupMsg

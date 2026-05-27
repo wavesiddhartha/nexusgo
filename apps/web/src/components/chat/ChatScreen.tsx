@@ -382,6 +382,117 @@ function Bubble({ msg, onReply }: { msg: LocalMessage; onReply: (msg: LocalMessa
     );
   }
 
+  // Batch transfer
+  if (msg.batch) {
+    const isDone = msg.batch.done;
+    return (
+      <div
+        id={`msg-${msg.id}`}
+        className={cn(
+          'flex items-center gap-2 group max-w-[85%] select-text transition-all duration-300 rounded-[18px] relative',
+          msg.mine ? 'self-end flex-row-reverse' : 'self-start flex-row'
+        )}
+      >
+        {renderDock()}
+        <div className={cn('flex flex-col relative', msg.mine ? 'items-end' : 'items-start')}>
+          <div
+            className={cn(
+              'rounded-[20px] p-4 transition-all duration-200 border',
+              msg.mine
+                ? 'bg-[#f8f8f7] border-[#e4e4e0] text-black hover:border-[#b0b0a8]'
+                : 'bg-white      border-[#e8e8e4] text-black hover:border-[#b0b0a8]'
+            )}
+            style={{ minWidth: 260, maxWidth: 300 }}
+          >
+            {msg.replyTo && <QuoteBox replyTo={msg.replyTo} mine={msg.mine} />}
+            
+            {/* Header / Title (Gorgeous stack representation) */}
+            <div className="flex items-center gap-3 mb-3.5">
+              <div className="relative shrink-0 w-11 h-11 flex items-center justify-center select-none">
+                {/* Visual Folder Stack effect with beautiful vanilla CSS offsets */}
+                <div className="absolute w-8 h-8 rounded-[8px] bg-[#d0d0cc] border border-[#b0b0a8]/40 -rotate-6 translate-x-[-3px] translate-y-[-2px] opacity-40" />
+                <div className="absolute w-8 h-8 rounded-[8px] bg-[#a0a09a] border border-[#8a8a84]/40 rotate-3 translate-x-[2px] opacity-60" />
+                <div className="absolute w-8.5 h-8.5 rounded-[9px] bg-[#080808] flex items-center justify-center border border-black shadow-[0_2px_8px_rgba(8,8,8,0.15)] z-10">
+                  <svg className="w-[15px] h-[15px] stroke-white fill-none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                  </svg>
+                </div>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-semibold text-black leading-snug">
+                  {msg.mine ? 'Sharing files' : 'Receiving files'}
+                </div>
+                <div className="text-[10px] font-mono font-medium text-[#7a7a74] mt-0.5">
+                  {msg.batch.totalFiles} items in batch
+                </div>
+              </div>
+            </div>
+
+            {/* Overall Indication Status: "uploaded 2/29" or "downloaded 14/29" */}
+            <div className="bg-[#f0f0ee]/50 rounded-[12px] p-2.5 mb-3 border border-[#ebebea]/40 text-left">
+              <div className="flex justify-between items-center text-[11px] font-medium text-black">
+                <span className="font-mono text-[#7a7a74]">Status:</span>
+                <span className="font-semibold text-[11.5px]">
+                  {msg.mine 
+                    ? `Uploaded: ${msg.batch.uploadedCount} / ${msg.batch.totalFiles}`
+                    : `Downloaded: ${msg.batch.downloadedCount} / ${msg.batch.totalFiles}`
+                  }
+                </span>
+              </div>
+              
+              {/* Extra details about active item if not done */}
+              {!isDone && (
+                <div className="mt-1.5 pt-1.5 border-t border-[#ebebea]/40">
+                  <div className="text-[9.5px] font-light text-[#7a7a74] flex justify-between items-center">
+                    <span className="truncate max-w-[140px] font-mono">{msg.batch.activeFileName}</span>
+                    <span className="font-mono text-[9px] shrink-0 font-medium bg-[#ebebea] px-1 rounded">{msg.batch.activeProgress}%</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Gorgeous dynamic progress indicator bar */}
+            {!isDone ? (
+              <>
+                <div className="h-[3px] bg-[#ebebea] rounded-full overflow-hidden mb-2.5 relative">
+                  <motion.div
+                    className="h-full bg-[#080808] rounded-full"
+                    animate={{ width: `${(msg.mine ? msg.batch.uploadedCount : msg.batch.downloadedCount) / msg.batch.totalFiles * 100}%` }}
+                    transition={{ duration: 0.2 }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[9.5px] font-mono text-[#a0a09a]">
+                  <span>
+                    {Math.round((msg.mine ? msg.batch.uploadedCount : msg.batch.downloadedCount) / msg.batch.totalFiles * 100)}% overall
+                  </span>
+                  {(msg.batch.speed || msg.batch.eta) && (
+                    <span>
+                      {msg.batch.speed}{msg.batch.eta ? ` · ${msg.batch.eta}` : ''}
+                    </span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-between border-t border-[#ebebea]/60 pt-2.5 select-none">
+                <span className="text-[10px] font-mono font-medium text-[#22c55e] flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5 stroke-[#22c55e] fill-none" strokeWidth="2.5" viewBox="0 0 24 24">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  All completed successfully ✓
+                </span>
+              </div>
+            )}
+          </div>
+          {renderReactions()}
+          <span className="text-[9px] font-mono font-light text-[#c8c8c2] mt-1.5 px-1">
+            {formatTime(new Date(msg.ts))}
+          </span>
+        </div>
+        <ReplyButton onReply={() => onReply(msg)} />
+      </div>
+    );
+  }
+
   // File transfer
   if (msg.file) {
     const hasUrl   = !!msg.file.url;
@@ -902,12 +1013,14 @@ export function ChatScreen() {
                   if (!activePeerId || !peer?.connected) { toast.error('Peer not connected'); return; }
                   const filesToSend = [...pendingFiles];
                   setPendingFiles([]);
-                  for (const file of filesToSend) {
-                    try {
-                      await sendFile(activePeerId, file);
-                    } catch (e: any) {
-                      toast.error(`${file.name}: ${e.message ?? 'Transfer failed'}`);
+                  try {
+                    if (filesToSend.length === 1) {
+                      await sendFile(activePeerId, filesToSend[0]);
+                    } else if (filesToSend.length > 1) {
+                      await sendFile(activePeerId, filesToSend);
                     }
+                  } catch (e: any) {
+                    toast.error(`Transfer failed: ${e.message ?? 'Unknown error'}`);
                   }
                 }}
                 className="w-full mt-2.5 py-2.5 bg-[#080808] hover:bg-black active:scale-[0.98] text-white text-[12.5px] font-medium rounded-[14px] transition-all cursor-pointer text-center select-none shadow-[0_4px_16px_rgba(8,8,8,0.12)] font-mono"

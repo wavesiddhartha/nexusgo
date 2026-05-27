@@ -60,19 +60,7 @@ export function DiscoverScreen() {
     svg.setAttribute('height', String(dims.h));
     const cx = dims.w / 2, cy = dims.h / 2;
 
-    // Draw 3 ultra-faint concentric sonar rings
-    const maxRadius = Math.min(dims.w, dims.h) * 0.44;
-    [0.32, 0.64, 0.96].forEach(scale => {
-      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      circle.setAttribute('cx', String(cx));
-      circle.setAttribute('cy', String(cy));
-      circle.setAttribute('r', String(maxRadius * scale));
-      circle.setAttribute('fill', 'none');
-      circle.setAttribute('stroke', 'rgba(8,8,8,0.035)');
-      circle.setAttribute('stroke-width', '0.6');
-      svg.appendChild(circle);
-    });
-
+    // Peer line connections will meet precisely at the center
     peers.forEach((p, i) => {
       const [fx, fy] = POSITIONS[i % POSITIONS.length];
       const nx = fx * dims.w, ny = fy * dims.h;
@@ -187,8 +175,26 @@ export function DiscoverScreen() {
           </span>
         </div>
 
-        {/* SVG lines */}
-        <svg ref={svgRef} className="absolute inset-0 pointer-events-none" />
+        {/* SVG lines with block/w-full/h-full to prevent layout distortions */}
+        <svg ref={svgRef} className="absolute inset-0 w-full h-full block pointer-events-none" />
+
+        {/* Concentric Grey Radar Rings rendered mathematically centered in React */}
+        {dims.w > 0 && [0.32, 0.64, 0.96].map((scale, idx) => {
+          const size = Math.min(dims.w, dims.h) * 0.44 * scale * 2;
+          return (
+            <div
+              key={idx}
+              className="absolute rounded-full border border-[#080808]/[0.035] pointer-events-none"
+              style={{
+                width: size,
+                height: size,
+                left: '50%',
+                top: '50%',
+                transform: 'translate(-50%, -50%)',
+              }}
+            />
+          );
+        })}
 
         {/* Me node */}
         <div
@@ -280,15 +286,15 @@ export function DiscoverScreen() {
           })}
         </AnimatePresence>
 
-        {/* Empty state */}
+        {/* Empty state positioned beautifully in the upper half of the radar */}
         {peers.length === 0 && (
           <div 
             className="absolute z-0 pointer-events-none text-center space-y-1.5"
-            style={{ left: '50%', top: 'calc(50% + 90px)', transform: 'translate(-50%, 0)' }}
+            style={{ left: '50%', top: 'calc(50% - 110px)', transform: 'translate(-50%, -50%)' }}
           >
             <div className="flex items-center justify-center gap-1.5 animate-pulse">
               <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e] inline-block" />
-              <p className="text-[10px] font-mono font-semibold text-[#22c55e] tracking-widest uppercase">Scanning…</p>
+              <p className="text-[10px] font-mono font-semibold text-[#22c55e] tracking-widest uppercase">SCANNING…</p>
             </div>
             <p className="text-[9px] font-mono font-light text-[#b0b0a8] max-w-[190px] mx-auto leading-normal">Open on another device to connect instantly</p>
           </div>

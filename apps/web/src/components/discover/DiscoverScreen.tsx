@@ -79,7 +79,7 @@ export function DiscoverScreen() {
         const py = dx / dist;
         // Alternate curve direction based on peer position index to ensure symmetry
         const curveDirection = i % 2 === 0 ? 1 : -1;
-        const offset = dist * 0.16 * curveDirection; 
+        const offset = dist * 0.06 * curveDirection; 
         const controlX = midX + px * offset;
         const controlY = midY + py * offset;
         pathD = `M ${cx} ${cy} Q ${controlX} ${controlY} ${nx} ${ny}`;

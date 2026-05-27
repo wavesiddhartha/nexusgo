@@ -195,20 +195,22 @@ export function DiscoverScreen() {
           className="absolute z-10"
           style={{ left: '50%', top: '50%', transform: 'translate(-50%,-50%)' }}
         >
-          <div className="flex flex-col items-center gap-1.5 font-mono select-none">
-            <div className="relative flex items-center justify-center">
+          <div className="flex flex-col items-center gap-2 font-mono select-none">
+            <div className="relative w-[48px] h-[48px] flex items-center justify-center">
               {/* Concentric Sonar waves with soft HSL color ripple */}
-              {[0, 1.3, 2.6, 3.9].map((delay, ri) => (
+              {[0, 1.5, 3.0, 4.5].map((delay, ri) => (
                 <div
                   key={ri}
-                  className="absolute rounded-full border border-[#22c55e]/15 pointer-events-none sonar-wave-active"
+                  className="absolute rounded-full border border-[#22c55e]/20 pointer-events-none sonar-wave-active"
                   style={{ 
                     left: '50%', 
                     top: '50%', 
-                    width: 50, 
-                    height: 50, 
+                    transform: 'translate(-50%, -50%)',
+                    width: 48, 
+                    height: 48, 
                     animationDelay: `${delay}s`,
-                    background: 'radial-gradient(circle, rgba(34,197,94,0.015) 0%, rgba(34,197,94,0) 70%)'
+                    background: 'radial-gradient(circle, rgba(34,197,94,0.03) 0%, rgba(34,197,94,0.06) 60%, rgba(34,197,94,0) 100%)',
+                    boxShadow: '0 0 15px rgba(34,197,94,0.08)'
                   }}
                 />
               ))}
@@ -216,7 +218,7 @@ export function DiscoverScreen() {
                 yo
               </div>
             </div>
-            <span className="text-[9px] font-mono font-light text-[#080808] tracking-wide">you</span>
+            <span className="text-[10px] font-mono font-medium text-[#080808] tracking-widest mt-1">you</span>
           </div>
         </div>
 
@@ -250,6 +252,7 @@ export function DiscoverScreen() {
                       style={{ 
                         left: '50%',
                         top: '50%',
+                        transform: 'translate(-50%, -50%)',
                         width: 40, 
                         height: 40, 
                         animationDelay: `${(i * 0.8) % 3.6}s` 
@@ -279,11 +282,15 @@ export function DiscoverScreen() {
 
         {/* Empty state */}
         {peers.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="text-center space-y-1.5">
-              <p className="text-[11px] font-mono font-light text-[#d0d0cc] tracking-widest uppercase">Scanning…</p>
-              <p className="text-[10px] font-mono font-light text-[#deded8]">Open on another device to connect</p>
+          <div 
+            className="absolute z-0 pointer-events-none text-center space-y-1.5"
+            style={{ left: '50%', top: 'calc(50% + 90px)', transform: 'translate(-50%, 0)' }}
+          >
+            <div className="flex items-center justify-center gap-1.5 animate-pulse">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e] inline-block" />
+              <p className="text-[10px] font-mono font-semibold text-[#22c55e] tracking-widest uppercase">Scanning…</p>
             </div>
+            <p className="text-[9px] font-mono font-light text-[#b0b0a8] max-w-[190px] mx-auto leading-normal">Open on another device to connect instantly</p>
           </div>
         )}
 

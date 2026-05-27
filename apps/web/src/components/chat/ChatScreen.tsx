@@ -312,17 +312,49 @@ function GroupedFilesBubble({ group, onReply }: { group: any; onReply: (msg: Loc
 
 // ── Message bubble ─────────────────────────────────────────────────────────────
 function Bubble({ msg, onReply }: { msg: LocalMessage; onReply: (msg: LocalMessage) => void }) {
+  const [reactions, setReactions] = useState<string[]>([]);
+
+  const renderDock = () => (
+    <div className={cn(
+      "absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-30 backdrop-blur-md bg-white/90 border border-[#e8e8e4]/60 shadow-[0_4px_16px_rgba(8,8,8,0.06)] rounded-full px-2 py-1 flex items-center gap-1.5 pointer-events-auto",
+      msg.mine ? "left-0 translate-x-[-105%] top-[10px]" : "right-0 translate-x-[105%] top-[10px]"
+    )}>
+      {['👍', '❤️', '😂', '😮', '😢', '🙏'].map(emoji => (
+        <button
+          key={emoji}
+          onClick={(e) => {
+            e.stopPropagation();
+            setReactions(prev => prev.includes(emoji) ? prev.filter(e => e !== emoji) : [...prev, emoji]);
+          }}
+          className="text-[13px] hover:scale-125 transition-transform duration-100 cursor-pointer select-none"
+        >
+          {emoji}
+        </button>
+      ))}
+    </div>
+  );
+
+  const renderReactions = () => reactions.length > 0 && (
+    <div className={cn(
+      "flex gap-0.5 bg-white border border-[#e4e4e0]/60 rounded-full px-2 py-[2px] shadow-sm text-[10px] absolute z-20 bottom-[-10px] select-none pointer-events-none animate-fadeIn",
+      msg.mine ? "right-2" : "left-2"
+    )}>
+      {reactions.map((r, ri) => <span key={ri}>{r}</span>)}
+    </div>
+  );
+
   // Voice message
   if (msg.voice) {
     return (
       <div
         id={`msg-${msg.id}`}
         className={cn(
-          'flex items-center gap-2 group max-w-[85%] select-text transition-all duration-300 rounded-[18px]',
+          'flex items-center gap-2 group max-w-[85%] select-text transition-all duration-300 rounded-[18px] relative',
           msg.mine ? 'self-end flex-row-reverse' : 'self-start flex-row'
         )}
       >
-        <div className={cn('flex flex-col', msg.mine ? 'items-end' : 'items-start')}>
+        {renderDock()}
+        <div className={cn('flex flex-col relative', msg.mine ? 'items-end' : 'items-start')}>
           <div className={cn(
             'px-3.5 py-2.5 rounded-[18px]',
             msg.mine ? 'bg-[#080808] text-white rounded-br-[5px]' : 'bg-[#f0f0ee] text-black rounded-bl-[5px]'
@@ -336,6 +368,7 @@ function Bubble({ msg, onReply }: { msg: LocalMessage; onReply: (msg: LocalMessa
               mine={msg.mine}
             />
           </div>
+          {renderReactions()}
           <span className="text-[9px] font-mono font-light text-[#c8c8c2] mt-1.5 px-1">
             {formatTime(new Date(msg.ts))}
           </span>
@@ -353,11 +386,12 @@ function Bubble({ msg, onReply }: { msg: LocalMessage; onReply: (msg: LocalMessa
       <div
         id={`msg-${msg.id}`}
         className={cn(
-          'flex items-center gap-2 group max-w-[85%] select-text transition-all duration-300 rounded-[18px]',
+          'flex items-center gap-2 group max-w-[85%] select-text transition-all duration-300 rounded-[18px] relative',
           msg.mine ? 'self-end flex-row-reverse' : 'self-start flex-row'
         )}
       >
-        <div className={cn('flex flex-col', msg.mine ? 'items-end' : 'items-start')}>
+        {renderDock()}
+        <div className={cn('flex flex-col relative', msg.mine ? 'items-end' : 'items-start')}>
           <div
             onClick={() => {
               if (hasUrl && msg.file?.url) {
@@ -425,6 +459,7 @@ function Bubble({ msg, onReply }: { msg: LocalMessage; onReply: (msg: LocalMessa
               <span className="text-[10px] font-mono font-light text-[#22c55e]">Sent ✓</span>
             )}
           </div>
+          {renderReactions()}
           <span className="text-[9px] font-mono font-light text-[#c8c8c2] mt-1.5 px-1">
             {formatTime(new Date(msg.ts))}
           </span>
@@ -439,11 +474,12 @@ function Bubble({ msg, onReply }: { msg: LocalMessage; onReply: (msg: LocalMessa
     <div
       id={`msg-${msg.id}`}
       className={cn(
-        'flex items-center gap-2 group max-w-[85%] select-text transition-all duration-300 rounded-[18px]',
+        'flex items-center gap-2 group max-w-[85%] select-text transition-all duration-300 rounded-[18px] relative',
         msg.mine ? 'self-end flex-row-reverse' : 'self-start flex-row'
       )}
     >
-      <div className={cn('flex flex-col', msg.mine ? 'items-end' : 'items-start')}>
+      {renderDock()}
+      <div className={cn('flex flex-col relative', msg.mine ? 'items-end' : 'items-start')}>
         <div className={cn(
           'px-3.5 py-2.5 text-[14px] leading-[1.55] break-words rounded-[18px]',
           msg.mine
@@ -453,6 +489,7 @@ function Bubble({ msg, onReply }: { msg: LocalMessage; onReply: (msg: LocalMessa
           {msg.replyTo && <QuoteBox replyTo={msg.replyTo} mine={msg.mine} />}
           {msg.text}
         </div>
+        {renderReactions()}
         <span className="text-[9px] font-mono font-light text-[#c8c8c2] mt-1.5 px-1">
           {formatTime(new Date(msg.ts))}
         </span>

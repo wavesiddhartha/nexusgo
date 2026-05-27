@@ -97,11 +97,12 @@ export interface ReactionMsg     { type: 'reaction';          msgId: string; emo
 export interface GroupInviteMsg  { type: 'group-invite';      roomId: string; roomName: string }
 
 export interface FileOffsetMsg    { type: 'file-offset';  fileId: string; offset: number }
+export interface AllowFileMsg     { type: 'allow-file';   fileId: string }
 
 export type DataMsg =
   | HelloMsg | ChatMsg | TypingMsg | ReadMsg
   | PingMsg  | PongMsg
-  | FileMeta | FileChunk | FileDone | FileOffsetMsg | BatchMetaMsg | BatchProgressMsg
+  | FileMeta | FileChunk | FileDone | FileOffsetMsg | AllowFileMsg | BatchMetaMsg | BatchProgressMsg
   | VoiceMeta | VoiceChunk
   | CallInvite | CallAnswer | CallEnd | CallBusy
   | GroupMsg
@@ -132,7 +133,7 @@ export const VOICE_CHUNK      = 32  * 1024;            // 32 KB per voice chunk
 export const MAX_FILE_SIZE    = 200 * 1024 * 1024 * 1024; // 200 GB
 export const PROTOCOL_VERSION = '2.0.0';
 export const HEARTBEAT_MS     = 10_000;
-export const PEER_TIMEOUT_MS  = 30_000;
+export const PEER_TIMEOUT_MS  = 120_000;
 export const RING_TIMEOUT_MS  = 45_000;
 export const MAX_MESH_PEERS   = 8;
 

@@ -9,7 +9,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { persist } from 'zustand/middleware';
-import { WebRTCManager } from '@/lib/webrtc-manager';
+import { WebRTCManager, deterministicId } from '@/lib/webrtc-manager';
 import type { RemotePeer, LocalMessage, ActiveCall, GroupRoom } from '@/lib/webrtc-manager';
 import { nanoid } from 'nanoid';
 import {
@@ -329,10 +329,16 @@ export const useNexusStore = create<NexusState>()(
           const isBatch = Array.isArray(filesOrFile);
           if (!isBatch) {
             const file = filesOrFile;
-            const fileId = nanoid();
+            const fileId = deterministicId(`${file.name}_${file.size}_${file.lastModified}`);
             set(s => {
               if (!s.threads[peerId]) s.threads[peerId] = [];
-              s.threads[peerId].push({ id: fileId, peerId, mine: true, file: { name: file.name, size: file.size, mime: file.type, progress: 0, done: false }, ts: Date.now(), read: true });
+              const existing = s.threads[peerId].find(m => m.id === fileId);
+              if (!existing) {
+                s.threads[peerId].push({ id: fileId, peerId, mine: true, file: { name: file.name, size: file.size, mime: file.type, progress: 0, done: false }, ts: Date.now(), read: true });
+              } else if (existing.file) {
+                existing.file.progress = 0;
+                existing.file.done = false;
+              }
             });
             try {
               await m.sendFile(peerId, file, (pct, speed, eta) => {

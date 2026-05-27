@@ -24,7 +24,7 @@ import type {
 } from '@nexus/shared';
 import { nanoid } from 'nanoid';
 
-function deterministicId(key: string): string {
+export function deterministicId(key: string): string {
   let hash1 = 5381;
   let hash2 = 89;
   for (let i = 0; i < key.length; i++) {
@@ -141,6 +141,8 @@ interface IncomingFile {
   chunks: (string | null)[];
   binaryChunks?: (Uint8Array | null)[];
   writableStream?: any;
+  writeQueue: Promise<void>; // Ensure sequential writes to prevent DOMException collisions
+  opfsFileId?: string; // Tracks temporary file inside Origin Private File System
   received: number;
   startedAt: number;
   bytesIn: number;
@@ -185,6 +187,7 @@ export class WebRTCManager {
   private pendingRoomInvites: string[] = [];
   private globalInFiles: Map<string, IncomingFile> = new Map();
   private sendingOffsets: Map<string, number> = new Map();
+  private allowedFiles: Set<string> = new Set();
 
   constructor(signalingUrl: string) {
     this.sigUrl  = signalingUrl;
@@ -192,6 +195,19 @@ export class WebRTCManager {
     this.myId    = (ls && localStorage.getItem('nexus_id'))   || nanoid(16);
     this.myName  = (ls && localStorage.getItem('nexus_name')) || randomAnimeName();
     if (ls) localStorage.setItem('nexus_id', this.myId);
+
+    // Clean up any stale temp files from OPFS on startup to prevent storage leaks
+    if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.getDirectory) {
+      navigator.storage.getDirectory().then(async (root) => {
+        try {
+          for await (const name of (root as any).keys()) {
+            if (name.startsWith('nexus_temp_')) {
+              await root.removeEntry(name).catch(() => {});
+            }
+          }
+        } catch {}
+      }).catch(() => {});
+    }
   }
 
   // ── Event bus ─────────────────────────────────────────────────────────────
@@ -254,9 +270,9 @@ export class WebRTCManager {
     const maxLimit = 200 * 1024 * 1024 * 1024; // 200 GB
     if (file.size > maxLimit) throw new Error('File exceeds 200 GB limit');
 
-    // Configure hardware-level buffer threshold
+    // Configure hardware-level buffer threshold (Safari-safe)
     if (conn.dc) {
-      conn.dc.bufferedAmountLowThreshold = 2 * 1024 * 1024; // 2 MB low threshold
+      conn.dc.bufferedAmountLowThreshold = 1024 * 1024; // 1 MB low threshold
     }
 
     // Deterministic 16-char ID based on name, size, lastModified for checkpoint recovery!
@@ -271,8 +287,20 @@ export class WebRTCManager {
       batchId,
     });
 
-    // Wait up to 120ms for potential offset reply from receiver (checkpoint resuming)
-    await new Promise(r => setTimeout(r, 120));
+    // Wait for the receiver to explicitly allow the file (prevents overflows while blocking confirm alerts are shown)
+    const startWait = Date.now();
+    while (!this.allowedFiles.has(fileId)) {
+      if (Date.now() - startWait > 120_000) { // 2 minutes timeout
+        throw new Error('Transfer declined or timed out by peer');
+      }
+      if (!conn.dc || conn.dc.readyState !== 'open') {
+        throw new Error('Connection lost before transfer was accepted');
+      }
+      await new Promise(r => setTimeout(r, 100));
+    }
+    this.allowedFiles.delete(fileId);
+
+    // Fetch the resume offset if any (receiver sends file-offset in parallel)
     const offset = this.sendingOffsets.get(fileId) ?? 0;
 
     const t0       = Date.now();
@@ -284,8 +312,8 @@ export class WebRTCManager {
     fileIdBytes.set(encodedId.slice(0, 16));
 
     for (let i = offset; i < totalChunks; i++) {
-      // Hardware-level Backpressure — wait for buffer depletion
-      if (conn.dc && conn.dc.bufferedAmount > 8 * 1024 * 1024) { // 8 MB buffer threshold
+      // Hardware-level Backpressure — wait for buffer depletion (Safari-safe 4MB limit)
+      if (conn.dc && conn.dc.bufferedAmount > 4 * 1024 * 1024) { // 4 MB buffer threshold
         await new Promise<void>(resolve => {
           let timer: ReturnType<typeof setInterval> | null = null;
           const cleanup = () => {
@@ -303,13 +331,13 @@ export class WebRTCManager {
 
           // Fallback polling check every 50ms in case the browser event is missed/throttled
           timer = setInterval(() => {
-            if (conn.dc && conn.dc.bufferedAmount <= 2 * 1024 * 1024) {
+            if (conn.dc && conn.dc.bufferedAmount <= 1024 * 1024) {
               cleanup();
               resolve();
             }
           }, 50);
 
-          if (conn.dc!.bufferedAmount <= 2 * 1024 * 1024) {
+          if (conn.dc!.bufferedAmount <= 1024 * 1024) {
             cleanup();
             resolve();
           }
@@ -881,11 +909,14 @@ export class WebRTCManager {
     }
 
     if (tf.writableStream) {
-      try {
-        await tf.writableStream.write(chunkData);
-      } catch (err) {
-        console.error("Error writing raw binary chunk directly to disk:", err);
-      }
+      // Chain the write promise to the queue to ensure sequential writes
+      tf.writeQueue = tf.writeQueue.then(async () => {
+        try {
+          await tf.writableStream.write(chunkData);
+        } catch (err) {
+          console.error("Error writing raw binary chunk directly to disk:", err);
+        }
+      });
     } else {
       if (!tf.binaryChunks) {
         tf.binaryChunks = new Array(total).fill(null);
@@ -993,7 +1024,15 @@ export class WebRTCManager {
               offset: existing.received,
             });
 
+            // Also allow the transfer explicitly so the sender resumes the loop
+            this.dc_send(conn, {
+              type: 'allow-file',
+              fileId: msg.fileId,
+            });
+
             // Emit the start/resume batch-progress or file-progress
+            const totalCh = existing.binaryChunks ? existing.binaryChunks.length : msg.totalChunks;
+            const progressPct = totalCh > 0 ? Math.round((existing.received / totalCh) * 100) : 0;
             if (msg.batchId) {
               this.emit({
                 type: 'batch-progress',
@@ -1003,7 +1042,7 @@ export class WebRTCManager {
                 uploadedCount: 0,
                 downloadedCount: -1, // signal active file name in store
                 activeFileName: msg.name,
-                activeProgress: Math.round((existing.received / existing.chunks.length) * 100) || 0,
+                activeProgress: progressPct,
                 done: false
               });
             } else {
@@ -1011,13 +1050,14 @@ export class WebRTCManager {
                 type: 'file-progress',
                 peerId: pid,
                 fileId: msg.fileId,
-                progress: Math.round((existing.received / existing.chunks.length) * 100) || 0
+                progress: progressPct
               });
             }
             return;
           }
 
           let writableStream: any = null;
+          let opfsFileId: string | undefined = undefined;
           const sanitizedName = msg.name.replace(/[\/\\]/g, '_'); // Prevent Path Traversal attacks
           
           // 1. If part of a batch or directory picker is active
@@ -1044,24 +1084,31 @@ export class WebRTCManager {
                   const fileHandle = await handle.getFileHandle(sanitizedName, { create: true });
                   writableStream = await fileHandle.createWritable();
                 } catch (err) {
-                  console.warn("Directory picker cancelled or failed, using fast memory buffer");
-                  if (msg.size > 2 * 1024 * 1024 * 1024) {
-                    window.alert("WARNING: Auto-save disabled. Receiving very large files (>2 GB) in-memory may crash your browser tab due to device memory limitations!");
-                  }
-                }
-              } else {
-                if (msg.size > 2 * 1024 * 1024 * 1024) {
-                  window.alert("WARNING: Auto-save disabled. Receiving very large files (>2 GB) in-memory may crash your browser tab due to device memory limitations!");
+                  console.warn("Directory picker cancelled or failed, using Origin Private File System fallback");
                 }
               }
+            }
+          }
+
+          // 3. Fallback to Origin Private File System (OPFS) for zero-memory streaming if directoryPicker wasn't chosen or supported
+          if (!writableStream && typeof navigator !== 'undefined' && navigator.storage && navigator.storage.getDirectory) {
+            try {
+              const root = await navigator.storage.getDirectory();
+              opfsFileId = `nexus_temp_${msg.fileId}`;
+              const fileHandle = await root.getFileHandle(opfsFileId, { create: true });
+              writableStream = await fileHandle.createWritable();
+            } catch (err) {
+              console.error("Failed to initialize OPFS writable stream", err);
             }
           }
 
           const incoming: IncomingFile = {
             name: msg.name, size: msg.size, mime: msg.mime,
             chunks: [],
-            binaryChunks: new Array(msg.totalChunks).fill(null), // Safe initial array allocation
+            binaryChunks: writableStream ? undefined : new Array(msg.totalChunks).fill(null),
             writableStream,
+            writeQueue: Promise.resolve(),
+            opfsFileId,
             received: 0, startedAt: Date.now(), bytesIn: 0,
             batchId: msg.batchId,
           };
@@ -1069,7 +1116,12 @@ export class WebRTCManager {
           conn.inFiles.set(msg.fileId, incoming);
           this.globalInFiles.set(msg.fileId, incoming);
 
-          // 3. Emit message only if NOT a batch (prevent chat clutter)
+          this.dc_send(conn, {
+            type: 'allow-file',
+            fileId: msg.fileId,
+          });
+
+          // 4. Emit message only if NOT a batch (prevent chat clutter)
           if (!msg.batchId) {
             this.emit({ type: 'message', msg: { id: msg.fileId, peerId: pid, mine: false, file: { name: msg.name, size: msg.size, mime: msg.mime, progress: 0, done: false }, ts: Date.now(), read: false } });
           } else {
@@ -1126,22 +1178,69 @@ export class WebRTCManager {
         if (tf.writableStream) {
           (async () => {
             try {
+              // Wait for all active writes in the promise queue to finish completely
+              await tf.writeQueue;
               await tf.writableStream.close();
-              if (tf.batchId) {
-                this.emit({
-                  type: 'batch-progress',
-                  peerId: pid,
-                  batchId: tf.batchId,
-                  totalFiles: 0,
-                  uploadedCount: 0,
-                  downloadedCount: -3,
-                  activeFileName: tf.name,
-                  activeProgress: 100,
-                  done: false
-                });
+
+              if (tf.opfsFileId) {
+                // OPFS sandboxed file transfer completed! Trigger lazy streaming download
+                const root = await navigator.storage.getDirectory();
+                const fileHandle = await root.getFileHandle(tf.opfsFileId);
+                const file = await fileHandle.getFile();
+                const url = URL.createObjectURL(file);
+
+                if (tf.batchId) {
+                  this.emit({
+                    type: 'batch-progress',
+                    peerId: pid,
+                    batchId: tf.batchId,
+                    totalFiles: 0,
+                    uploadedCount: 0,
+                    downloadedCount: -3,
+                    activeFileName: tf.name,
+                    activeProgress: 100,
+                    done: false
+                  });
+                } else {
+                  this.emit({ type: 'file-progress', peerId: pid, fileId: msg.fileId, progress: 100, url });
+                }
+
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = tf.name;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+
+                URL.revokeObjectURL(url);
+
+                // Clean up the temporary sandboxed entry after a delay to ensure standard download initiated successfully
+                const tempId = tf.opfsFileId;
+                setTimeout(async () => {
+                  try {
+                    const r = await navigator.storage.getDirectory();
+                    await r.removeEntry(tempId);
+                  } catch {}
+                }, 30_000);
               } else {
-                this.emit({ type: 'file-progress', peerId: pid, fileId: msg.fileId, progress: 100 });
+                // Auto-save folder (directoryHandle)
+                if (tf.batchId) {
+                  this.emit({
+                    type: 'batch-progress',
+                    peerId: pid,
+                    batchId: tf.batchId,
+                    totalFiles: 0,
+                    uploadedCount: 0,
+                    downloadedCount: -3,
+                    activeFileName: tf.name,
+                    activeProgress: 100,
+                    done: false
+                  });
+                } else {
+                  this.emit({ type: 'file-progress', peerId: pid, fileId: msg.fileId, progress: 100 });
+                }
               }
+
               conn.inFiles.delete(msg.fileId);
               this.globalInFiles.delete(msg.fileId);
             } catch (err) {
@@ -1234,6 +1333,10 @@ export class WebRTCManager {
       }
       case 'file-offset': {
         this.sendingOffsets.set(msg.fileId, msg.offset);
+        break;
+      }
+      case 'allow-file': {
+        this.allowedFiles.add(msg.fileId);
         break;
       }
 

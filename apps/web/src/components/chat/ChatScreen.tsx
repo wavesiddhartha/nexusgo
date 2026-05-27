@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import type { LocalMessage } from '@/lib/webrtc-manager';
 
 // ── File modal ─────────────────────────────────────────────────────────────────
-function FileModal({ onClose, onSelect }: { onClose: () => void; onSelect: (f: File) => void }) {
+function FileModal({ onClose, onSelect }: { onClose: () => void; onSelect: (f: any) => void }) {
   const options = [
     { label: 'Photo or Image', sub: 'JPEG · PNG · GIF · WebP',       accept: 'image/*',  icon: 'image' },
     { label: 'Video',          sub: 'MP4 · MOV · WebM',              accept: 'video/*',  icon: 'video' },
@@ -22,10 +22,11 @@ function FileModal({ onClose, onSelect }: { onClose: () => void; onSelect: (f: F
   const pick = (accept?: string) => {
     const el = document.createElement('input');
     el.type = 'file';
+    el.multiple = true;
     if (accept) el.accept = accept;
     el.onchange = () => {
-      const f = el.files?.[0];
-      if (f) { onSelect(f); onClose(); }
+      const files = el.files;
+      if (files && files.length > 0) { onSelect(files); onClose(); }
     };
     el.click();
   };
@@ -116,6 +117,196 @@ function ReplyButton({ onReply }: { onReply: () => void }) {
         <path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
       </svg>
     </button>
+  );
+}
+
+function groupThreadMessages(thread: LocalMessage[]): any[] {
+  const result: any[] = [];
+  let currentGroup: { id: string; mine: boolean; ts: number; isGroupedFiles: true; files: LocalMessage[] } | null = null;
+
+  for (const msg of thread) {
+    if (msg.file) {
+      if (currentGroup && currentGroup.mine === msg.mine && Math.abs(msg.ts - currentGroup.ts) < 8000) {
+        currentGroup.files.push(msg);
+      } else {
+        if (currentGroup) {
+          result.push(currentGroup);
+        }
+        currentGroup = {
+          id: msg.id,
+          mine: msg.mine,
+          ts: msg.ts,
+          isGroupedFiles: true,
+          files: [msg],
+        };
+      }
+    } else {
+      if (currentGroup) {
+        result.push(currentGroup);
+        currentGroup = null;
+      }
+      result.push(msg);
+    }
+  }
+  if (currentGroup) {
+    result.push(currentGroup);
+  }
+  return result;
+}
+
+function GroupedFilesBubble({ group, onReply }: { group: any; onReply: (msg: LocalMessage) => void }) {
+  const files = group.files;
+  const isMine = group.mine;
+  
+  const allDone = files.every((f: any) => f.file?.done);
+  const anyHasUrl = files.some((f: any) => !!f.file?.url);
+  
+  const handleDownloadAll = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    files.forEach((f: any) => {
+      if (f.file?.url) {
+        const a = document.createElement('a');
+        a.href = f.file.url;
+        a.download = f.file.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    });
+  };
+
+  const getAvatarGradient = (name: string): string => {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const hue1 = Math.abs(hash % 360);
+    const hue2 = Math.abs((hash * 7 + 120) % 360);
+    return `linear-gradient(135deg, hsl(${hue1}, 80%, 93%), hsl(${hue2}, 80%, 93%))`;
+  };
+
+  return (
+    <div
+      id={`msg-${group.id}`}
+      className={cn(
+        'flex items-center gap-2 group max-w-[85%] select-text transition-all duration-300 rounded-[18px]',
+        isMine ? 'self-end flex-row-reverse' : 'self-start flex-row'
+      )}
+    >
+      <div className={cn('flex flex-col', isMine ? 'items-end' : 'items-start')}>
+        <div
+          className={cn(
+            'rounded-[20px] p-3.5 border transition-all',
+            isMine
+              ? 'bg-[#f0f0ee] border-[#e4e4e0]'
+              : 'bg-white border-[#e8e8e4]'
+          )}
+          style={{ width: 280 }}
+        >
+          {/* Header info */}
+          <div className="flex items-center justify-between mb-3 border-b border-[#ebebea]/60 pb-2 select-none">
+            <span className="text-[10px] font-mono font-medium uppercase tracking-wider text-[#8a8a84] flex items-center gap-1">
+              📎 {files.length} Shared Files
+            </span>
+            {allDone && anyHasUrl && (
+              <button
+                onClick={handleDownloadAll}
+                className="px-2.5 py-[5px] bg-[#3b82f6] hover:bg-[#2563eb] active:scale-95 text-white text-[9.5px] font-mono rounded-full font-medium transition-all cursor-pointer shadow-sm"
+              >
+                Save All
+              </button>
+            )}
+          </div>
+
+          {/* Grid collage layout */}
+          <div className="grid grid-cols-2 gap-2 mb-3 select-none">
+            {files.slice(0, 4).map((f: any, idx: number) => {
+              const fileInfo = f.file;
+              const isImage = fileInfo.mime?.startsWith('image/');
+              const isDone = fileInfo.done;
+              const hasUrl = !!fileInfo.url;
+              const isLastGrid = idx === 3 && files.length > 4;
+
+              return (
+                <div
+                  key={f.id}
+                  onClick={() => {
+                    if (hasUrl) {
+                      const a = document.createElement('a');
+                      a.href = fileInfo.url;
+                      a.download = fileInfo.name;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                    }
+                  }}
+                  className={cn(
+                    "relative rounded-[12px] border border-[#e4e4e0]/60 overflow-hidden bg-[#fafaf9] aspect-square flex flex-col items-center justify-center p-2 group/item transition-colors",
+                    hasUrl ? "cursor-pointer hover:bg-[#f0f0ee]" : "cursor-default"
+                  )}
+                >
+                  {isImage && hasUrl ? (
+                    <img
+                      src={fileInfo.url}
+                      alt={fileInfo.name}
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center text-center">
+                      <svg className="w-5 h-5 stroke-[#9a9a94] mb-1 fill-none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                        <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+                        <polyline points="13 2 13 9 20 9"/>
+                      </svg>
+                      <span className="text-[9px] text-black font-medium truncate max-w-[100px] px-1">
+                        {fileInfo.name}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Overlays / progress bars inside thumbnail */}
+                  {!isDone && (
+                    <div className="absolute inset-0 bg-white/90 flex flex-col items-center justify-center p-2">
+                      <div className="w-8 h-8 rounded-full border border-black/10 flex items-center justify-center text-[8px] font-mono font-medium text-black">
+                        {fileInfo.progress}%
+                      </div>
+                      <div className="w-full bg-[#ebebea] h-[2px] rounded-full overflow-hidden mt-1.5 max-w-[48px]">
+                        <div
+                          className="h-full bg-black rounded-full"
+                          style={{ width: `${fileInfo.progress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Plus indicator overlay for collage */}
+                  {isLastGrid && (
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-[1px] flex items-center justify-center text-white text-[14px] font-mono font-bold">
+                      +{files.length - 3}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Subtext list of all files in batch */}
+          <div className="space-y-1.5 max-h-[88px] overflow-y-auto pr-1">
+            {files.map((f: any) => (
+              <div key={f.id} className="flex items-center justify-between text-[10px] text-[#5a5a55]">
+                <span className="truncate max-w-[170px] font-light">{f.file.name}</span>
+                <span className="font-mono text-[9px] shrink-0 text-[#9a9a94] ml-2">
+                  {f.file.done ? 'Done ✓' : `${f.file.progress}%`}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <span className="text-[9px] font-mono font-light text-[#c8c8c2] mt-1.5 px-1">
+          {formatTime(new Date(group.ts))}
+        </span>
+      </div>
+      <ReplyButton onReply={() => onReply(files[0])} />
+    </div>
   );
 }
 
@@ -394,10 +585,16 @@ export function ChatScreen() {
     if (taRef.current) taRef.current.style.height = 'auto';
   }, [text, activePeerId, peer, sendMessage, replyTarget]);
 
-  const handleFile = useCallback(async (file: File) => {
+  const handleFile = useCallback(async (files: any) => {
     if (!activePeerId || !peer?.connected) { toast.error('Peer not connected'); return; }
-    try { await sendFile(activePeerId, file); }
-    catch (e: any) { toast.error(e.message ?? 'Transfer failed'); }
+    const fileArray = Array.from(files) as File[];
+    for (const file of fileArray) {
+      try { 
+        await sendFile(activePeerId, file); 
+      } catch (e: any) { 
+        toast.error(`${file.name}: ${e.message ?? 'Transfer failed'}`); 
+      }
+    }
   }, [activePeerId, peer, sendFile]);
 
   const handleVoice = useCallback(async (blob: Blob, durationMs: number) => {
@@ -519,7 +716,12 @@ export function ChatScreen() {
               <p className="text-[11px] font-mono font-light text-[#d0d0cc]">No messages yet</p>
             </div>
           ) : (
-            thread.map(msg => <Bubble key={msg.id} msg={msg} onReply={setReplyTarget} />)
+            groupThreadMessages(thread).map(msg => {
+              if (msg.isGroupedFiles) {
+                return <GroupedFilesBubble key={msg.id} group={msg} onReply={setReplyTarget} />;
+              }
+              return <Bubble key={msg.id} msg={msg} onReply={setReplyTarget} />;
+            })
           )}
 
           {/* Typing indicator */}

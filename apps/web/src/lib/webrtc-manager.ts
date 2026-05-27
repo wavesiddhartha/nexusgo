@@ -211,6 +211,11 @@ export class WebRTCManager {
     const conn = this.requireOpen(peerId);
     if (file.size > MAX_FILE_SIZE) throw new Error('File exceeds 2 GB limit');
 
+    // Configure hardware-level buffer threshold
+    if (conn.dc) {
+      conn.dc.bufferedAmountLowThreshold = 1024 * 1024; // 1 MB
+    }
+
     const fileId      = nanoid();
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
     this.dc_send(conn, {
@@ -224,9 +229,19 @@ export class WebRTCManager {
     let bytesSent  = 0;
 
     for (let i = 0; i < totalChunks; i++) {
-      // Backpressure — yield when buffer is near full
-      while (conn.dc && conn.dc.readyState === 'open' && conn.dc.bufferedAmount > 16 * 1024 * 1024) {
-        await new Promise(r => setTimeout(r, 8));
+      // Hardware-level Backpressure — wait for buffer depletion
+      if (conn.dc && conn.dc.bufferedAmount > 4 * 1024 * 1024) {
+        await new Promise<void>(resolve => {
+          const handler = () => {
+            if (conn.dc) conn.dc.onbufferedamountlow = null;
+            resolve();
+          };
+          conn.dc!.onbufferedamountlow = handler;
+          if (conn.dc!.bufferedAmount <= 1024 * 1024) {
+            if (conn.dc) conn.dc.onbufferedamountlow = null;
+            resolve();
+          }
+        });
       }
       if (!conn.dc || conn.dc.readyState !== 'open') throw new Error('Connection lost during transfer');
 
@@ -245,8 +260,10 @@ export class WebRTCManager {
       this.emit({ type: 'file-progress', peerId, fileId, progress: pct, speed, eta });
       onProgress?.(pct, speed, eta);
 
-      // Yield to event loop every 20 chunks (~5 MB)
-      if (i % 20 === 0) await new Promise(r => setTimeout(r, 0));
+      // Yield periodically to allow browser UI thread to paint frames smoothly
+      if (i % 30 === 0) {
+        await new Promise(r => requestAnimationFrame(r));
+      }
     }
 
     this.dc_send(conn, { type: 'file-done', fileId });
@@ -720,22 +737,38 @@ export class WebRTCManager {
         if (!tf) break;
         const allReceived = tf.chunks.every(c => c !== null);
         if (allReceived) {
-          const blobs = (tf.chunks as string[]).map(b64 => {
-            const bin = atob(b64);
-            return new Uint8Array(bin.length).map((_, i) => bin.charCodeAt(i));
-          });
-          const url = URL.createObjectURL(new Blob(blobs, { type: tf.mime }));
-          this.emit({ type: 'file-progress', peerId: pid, fileId: msg.fileId, progress: 100, url });
+          const chunks = tf.chunks as string[];
+          (async () => {
+            const blobs: any[] = [];
+            for (let i = 0; i < chunks.length; i++) {
+              const bin = atob(chunks[i]);
+              const u8 = new Uint8Array(bin.length);
+              for (let j = 0; j < bin.length; j++) {
+                u8[j] = bin.charCodeAt(j);
+              }
+              blobs.push(u8);
+              
+              // Yield to event loop every 300 chunks (~5 MB of Base64)
+              if (i % 300 === 0) {
+                await new Promise(r => setTimeout(r, 0));
+              }
+            }
+            
+            const url = URL.createObjectURL(new Blob(blobs, { type: tf.mime }));
+            this.emit({ type: 'file-progress', peerId: pid, fileId: msg.fileId, progress: 100, url });
 
-          // ➔ Automatically trigger the save/download dialog on completion!
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = tf.name;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
+            // ➔ Automatically trigger the save/download dialog on completion!
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = tf.name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            conn.inFiles.delete(msg.fileId);
+          })().catch(() => {});
+        } else {
+          conn.inFiles.delete(msg.fileId);
         }
-        conn.inFiles.delete(msg.fileId);
         break;
       }
 

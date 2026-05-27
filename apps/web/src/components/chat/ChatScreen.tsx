@@ -539,6 +539,25 @@ export function ChatScreen() {
   const [showVoice,  setShowVoice] = useState(false);
   const [replyTarget, setReplyTarget] = useState<LocalMessage | null>(null);
   const [showTrust,  setShowTrust]  = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      handleFile(files);
+    }
+  };
 
   const taRef         = useRef<HTMLTextAreaElement>(null);
   const msgRef        = useAutoscroll([thread.length, activePeerId]);
@@ -632,7 +651,25 @@ export function ChatScreen() {
     <div className="flex h-full overflow-hidden">
       <PeerListSidebar activePeerId={activePeerId} onSelect={id => setActivePeer(id)} />
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 relative" onDragOver={handleDragOver}>
+        {isDragging && (
+          <div 
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            className="absolute inset-0 z-40 backdrop-blur-md bg-white/70 flex flex-col items-center justify-center border-4 border-dashed border-[#3b82f6]/30 rounded-[24px] m-2 animate-fadeIn select-none pointer-events-auto"
+          >
+            <div className="w-16 h-16 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center mb-4 text-[#3b82f6] animate-pulse">
+              <svg className="w-8 h-8 stroke-current fill-none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+            </div>
+            <h3 className="text-[15px] font-medium text-black">Drop files here</h3>
+            <p className="text-[11px] font-mono font-light text-[#9a9a94] mt-1">Share instantly via secure P2P channels</p>
+          </div>
+        )}
         {/* Header */}
         <div className="flex items-center gap-2.5 px-4 h-[52px] border-b border-[#ebebea] shrink-0 bg-white">
           {/* Back (mobile) */}

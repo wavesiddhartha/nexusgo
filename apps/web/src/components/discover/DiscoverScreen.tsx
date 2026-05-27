@@ -51,7 +51,7 @@ export function DiscoverScreen() {
   const selectedPeer = peers.find(p => p.id === selectedId) ?? null;
   const myIni = nameToInitials(myName || 'NX');
 
-  // Draw SVG connector lines
+  // Draw SVG connector lines and concentric radar rings
   useEffect(() => {
     if (!svgRef.current || dims.w === 0) return;
     const svg = svgRef.current;
@@ -59,6 +59,20 @@ export function DiscoverScreen() {
     svg.setAttribute('width',  String(dims.w));
     svg.setAttribute('height', String(dims.h));
     const cx = dims.w / 2, cy = dims.h / 2;
+
+    // Draw 3 ultra-faint concentric sonar rings
+    const maxRadius = Math.min(dims.w, dims.h) * 0.44;
+    [0.32, 0.64, 0.96].forEach(scale => {
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', String(cx));
+      circle.setAttribute('cy', String(cy));
+      circle.setAttribute('r', String(maxRadius * scale));
+      circle.setAttribute('fill', 'none');
+      circle.setAttribute('stroke', 'rgba(8,8,8,0.035)');
+      circle.setAttribute('stroke-width', '0.6');
+      svg.appendChild(circle);
+    });
+
     peers.forEach((p, i) => {
       const [fx, fy] = POSITIONS[i % POSITIONS.length];
       const nx = fx * dims.w, ny = fy * dims.h;

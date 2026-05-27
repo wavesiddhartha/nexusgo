@@ -251,13 +251,30 @@ export class WebRTCManager {
       // Hardware-level Backpressure — wait for buffer depletion
       if (conn.dc && conn.dc.bufferedAmount > 8 * 1024 * 1024) { // 8 MB buffer threshold
         await new Promise<void>(resolve => {
-          const handler = () => {
+          let timer: ReturnType<typeof setInterval> | null = null;
+          const cleanup = () => {
             if (conn.dc) conn.dc.onbufferedamountlow = null;
+            if (timer) {
+              clearInterval(timer);
+              timer = null;
+            }
+          };
+          const handler = () => {
+            cleanup();
             resolve();
           };
           conn.dc!.onbufferedamountlow = handler;
+
+          // Fallback polling check every 50ms in case the browser event is missed/throttled
+          timer = setInterval(() => {
+            if (conn.dc && conn.dc.bufferedAmount <= 2 * 1024 * 1024) {
+              cleanup();
+              resolve();
+            }
+          }, 50);
+
           if (conn.dc!.bufferedAmount <= 2 * 1024 * 1024) {
-            if (conn.dc) conn.dc.onbufferedamountlow = null;
+            cleanup();
             resolve();
           }
         });
@@ -291,9 +308,9 @@ export class WebRTCManager {
       this.emit({ type: 'file-progress', peerId, fileId, progress: pct, speed, eta });
       onProgress?.(pct, speed, eta);
 
-      // Yield periodically to allow browser UI thread to paint frames smoothly
-      if (i % 20 === 0) {
-        await new Promise(r => requestAnimationFrame(r));
+      // Yield periodically to allow browser UI thread to paint frames smoothly in background
+      if (i % 50 === 0) {
+        await new Promise(r => setTimeout(r, 0));
       }
     }
 

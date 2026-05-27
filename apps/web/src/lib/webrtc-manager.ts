@@ -261,7 +261,7 @@ export class WebRTCManager {
 
     // Deterministic 16-char ID based on name, size, lastModified for checkpoint recovery!
     const fileId = deterministicId(`${file.name}_${file.size}_${file.lastModified}`);
-    const BINARY_CHUNK_SIZE = 256 * 1024; // 256 KB for ultra fast P2P transfers
+    const BINARY_CHUNK_SIZE = 16 * 1024; // 16 KB standard chunk size (cross-browser safe)
     const totalChunks = Math.ceil(file.size / BINARY_CHUNK_SIZE);
     this.dc_send(conn, {
       type: 'file-meta', fileId,

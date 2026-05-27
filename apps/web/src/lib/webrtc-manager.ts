@@ -32,6 +32,7 @@ export interface RemotePeer {
   pingMs: number | null;
   connected: boolean;
   lastSeen: number;
+  connectionState?: RTCPeerConnectionState;
 }
 
 export interface LocalMessage {
@@ -661,6 +662,7 @@ export class WebRTCManager {
     const info: RemotePeer = {
       id: peerId, name: name ?? '…', initials: initials(name ?? '?'),
       pingMs: null, connected: false, lastSeen: Date.now(),
+      connectionState: pc.connectionState,
     };
     const conn: PeerConn = { info, pc, dc: null, makingOffer: false, ignoreOffer: false, pingTimer: null, inFiles: new Map(), inVoice: new Map() };
     this.peers.set(peerId, conn);
@@ -682,6 +684,7 @@ export class WebRTCManager {
 
     pc.onconnectionstatechange = () => {
       info.connected = pc.connectionState === 'connected';
+      info.connectionState = pc.connectionState;
       this.emit({ type: 'peer-updated', peer: { ...info } });
       if (pc.connectionState === 'failed' || pc.connectionState === 'closed') this.removeConn(peerId);
     };

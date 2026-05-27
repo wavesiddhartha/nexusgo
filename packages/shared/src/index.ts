@@ -91,6 +91,7 @@ export interface GroupMsg      { type: 'group-msg';    roomId: string; text: str
 export interface GroupCallInvite { type: 'group-call-invite'; roomId: string; callerId: string; callerName: string }
 export interface GroupCallJoin   { type: 'group-call-join';   roomId: string; joinerId: string }
 export interface GroupCallLeave  { type: 'group-call-leave';  roomId: string; leaverId: string }
+export interface ReactionMsg     { type: 'reaction';          msgId: string; emoji: string }
 
 export type DataMsg =
   | HelloMsg | ChatMsg | TypingMsg | ReadMsg
@@ -99,7 +100,8 @@ export type DataMsg =
   | VoiceMeta | VoiceChunk
   | CallInvite | CallAnswer | CallEnd | CallBusy
   | GroupMsg
-  | GroupCallInvite | GroupCallJoin | GroupCallLeave;
+  | GroupCallInvite | GroupCallJoin | GroupCallLeave
+  | ReactionMsg;
 
 // ── Push payload ──────────────────────────────────────────────────────────────
 export interface PushPayload {

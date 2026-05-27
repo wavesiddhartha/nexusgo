@@ -72,6 +72,7 @@ interface Actions {
   sendFile:         (peerId: string, file: File) => Promise<void>;
   sendVoiceMsg:     (peerId: string, blob: Blob, durationMs: number) => Promise<void>;
   sendTyping:       (peerId: string) => void;
+  sendReaction:     (peerId: string, msgId: string, emoji: string) => void;
   markRead:         (peerId: string) => void;
   markGroupRead:    (roomId: string) => void;
   connectToPeer:    (id: string) => void;
@@ -156,6 +157,25 @@ export const useNexusStore = create<NexusState>()(
                     new Notification(peer?.name ?? 'NEXUS', { body, icon: '/icon-192.png', tag: msg.peerId });
                   }
                 }
+                break;
+              }
+              case 'reaction': {
+                const { peerId, msgId, emoji } = ev;
+                set(s => {
+                  const thread = s.threads[peerId];
+                  if (thread) {
+                    const msg = thread.find(m => m.id === msgId);
+                    if (msg) {
+                      if (!msg.reactions) (msg as any).reactions = [];
+                      const exists = (msg as any).reactions.includes(emoji);
+                      if (exists) {
+                        (msg as any).reactions = (msg as any).reactions.filter((e: any) => e !== emoji);
+                      } else {
+                        (msg as any).reactions.push(emoji);
+                      }
+                    }
+                  }
+                });
                 break;
               }
 
@@ -304,6 +324,27 @@ export const useNexusStore = create<NexusState>()(
         },
 
         sendTyping(peerId) { get().manager?.sendTyping(peerId); },
+        sendReaction(peerId, msgId, emoji) {
+          const m = get().manager;
+          if (m) {
+            m.sendReaction(peerId, msgId, emoji);
+            set(s => {
+              const thread = s.threads[peerId];
+              if (thread) {
+                const msg = thread.find(m2 => m2.id === msgId);
+                if (msg) {
+                  if (!msg.reactions) msg.reactions = [];
+                  const exists = msg.reactions.includes(emoji);
+                  if (exists) {
+                    msg.reactions = msg.reactions.filter(e => e !== emoji);
+                  } else {
+                    msg.reactions.push(emoji);
+                  }
+                }
+              }
+            });
+          }
+        },
         markRead(peerId)   { set(s => { s.unread[peerId] = 0; }); },
         markGroupRead(id)  { set(s => { s.groupUnread[id] = 0; }); },
         connectToPeer(id)  { get().manager?.connectToPeer(id); },

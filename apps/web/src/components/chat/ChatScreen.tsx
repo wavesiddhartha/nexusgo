@@ -312,7 +312,9 @@ function GroupedFilesBubble({ group, onReply }: { group: any; onReply: (msg: Loc
 
 // ── Message bubble ─────────────────────────────────────────────────────────────
 function Bubble({ msg, onReply }: { msg: LocalMessage; onReply: (msg: LocalMessage) => void }) {
-  const [reactions, setReactions] = useState<string[]>([]);
+  const sendReaction = useNexusStore(s => s.sendReaction);
+  const activePeerId = useNexusStore(s => s.activePeerId);
+  const msgReactions = (msg as any).reactions ?? [];
 
   const renderDock = () => (
     <div className={cn(
@@ -324,7 +326,9 @@ function Bubble({ msg, onReply }: { msg: LocalMessage; onReply: (msg: LocalMessa
           key={emoji}
           onClick={(e) => {
             e.stopPropagation();
-            setReactions(prev => prev.includes(emoji) ? prev.filter(e => e !== emoji) : [...prev, emoji]);
+            if (activePeerId) {
+              sendReaction(activePeerId, msg.id, emoji);
+            }
           }}
           className="text-[13px] hover:scale-125 transition-transform duration-100 cursor-pointer select-none"
         >
@@ -334,12 +338,12 @@ function Bubble({ msg, onReply }: { msg: LocalMessage; onReply: (msg: LocalMessa
     </div>
   );
 
-  const renderReactions = () => reactions.length > 0 && (
+  const renderReactions = () => msgReactions.length > 0 && (
     <div className={cn(
       "flex gap-0.5 bg-white border border-[#e4e4e0]/60 rounded-full px-2 py-[2px] shadow-sm text-[10px] absolute z-20 bottom-[-10px] select-none pointer-events-none animate-fadeIn",
       msg.mine ? "right-2" : "left-2"
     )}>
-      {reactions.map((r, ri) => <span key={ri}>{r}</span>)}
+      {msgReactions.map((r: string, ri: number) => <span key={ri}>{r}</span>)}
     </div>
   );
 

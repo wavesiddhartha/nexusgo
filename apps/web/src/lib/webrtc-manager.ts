@@ -62,6 +62,7 @@ export interface LocalMessage {
     senderName: string;
     text: string;
   };
+  reactions?: string[];
 }
 
 export type CallState = 'ringing-out' | 'ringing-in' | 'active' | 'ended';
@@ -103,6 +104,7 @@ export type ManagerEvent =
   | { type: 'group-call-invite';   roomId: string; callerId: string; callerName: string }
   | { type: 'group-call-join';     roomId: string; joinerId: string }
   | { type: 'group-call-leave';    roomId: string; leaverId: string }
+  | { type: 'reaction';            peerId: string; msgId: string; emoji: string }
   | { type: 'ws-connected' }
   | { type: 'ws-disconnected' };
 
@@ -200,6 +202,11 @@ export class WebRTCManager {
   sendTyping(peerId: string) {
     const c = this.peers.get(peerId);
     if (c?.dc?.readyState === 'open') this.dc_send(c, { type: 'typing' });
+  }
+
+  sendReaction(peerId: string, msgId: string, emoji: string) {
+    const c = this.peers.get(peerId);
+    if (c?.dc?.readyState === 'open') this.dc_send(c, { type: 'reaction', msgId, emoji });
   }
 
   // ── File transfer ─────────────────────────────────────────────────────────
@@ -853,6 +860,10 @@ export class WebRTCManager {
       }
       case 'group-call-leave': {
         this.emit({ type: 'group-call-leave', roomId: msg.roomId, leaverId: msg.leaverId });
+        break;
+      }
+      case 'reaction': {
+        this.emit({ type: 'reaction', peerId: pid, msgId: msg.msgId, emoji: msg.emoji });
         break;
       }
     }

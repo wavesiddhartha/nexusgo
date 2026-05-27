@@ -105,6 +105,7 @@ export type ManagerEvent =
   | { type: 'group-call-join';     roomId: string; joinerId: string }
   | { type: 'group-call-leave';    roomId: string; leaverId: string }
   | { type: 'reaction';            peerId: string; msgId: string; emoji: string }
+  | { type: 'group-invite-received'; roomId: string; roomName: string }
   | { type: 'ws-connected' }
   | { type: 'ws-disconnected' };
 
@@ -112,6 +113,8 @@ export type ManagerEvent =
 interface IncomingFile {
   name: string; size: number; mime: string;
   chunks: (string | null)[];
+  binaryChunks?: (Uint8Array | null)[];
+  writableStream?: any;
   received: number;
   startedAt: number;
   bytesIn: number;
@@ -130,6 +133,7 @@ interface PeerConn {
   pingTimer:    ReturnType<typeof setInterval> | null;
   inFiles:      Map<string, IncomingFile>;
   inVoice:      Map<string, IncomingVoice>;
+  directoryHandle?: any;
 }
 
 // ── Manager ───────────────────────────────────────────────────────────────────
@@ -151,6 +155,7 @@ export class WebRTCManager {
   private rooms:         Map<string, GroupRoom> = new Map();
   private vapidKey       = '';
   private pushSub:       PushSubscription | null = null;
+  private pendingRoomInvites: string[] = [];
 
   constructor(signalingUrl: string) {
     this.sigUrl  = signalingUrl;
@@ -216,35 +221,42 @@ export class WebRTCManager {
     onProgress?: (pct: number, speed: string, eta: string) => void,
   ): Promise<string> {
     const conn = this.requireOpen(peerId);
-    if (file.size > MAX_FILE_SIZE) throw new Error('File exceeds 2 GB limit');
+    const maxLimit = 200 * 1024 * 1024 * 1024; // 200 GB
+    if (file.size > maxLimit) throw new Error('File exceeds 200 GB limit');
 
     // Configure hardware-level buffer threshold
     if (conn.dc) {
-      conn.dc.bufferedAmountLowThreshold = 1024 * 1024; // 1 MB
+      conn.dc.bufferedAmountLowThreshold = 2 * 1024 * 1024; // 2 MB low threshold
     }
 
     const fileId      = nanoid();
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const BINARY_CHUNK_SIZE = 256 * 1024; // 256 KB for ultra fast P2P transfers
+    const totalChunks = Math.ceil(file.size / BINARY_CHUNK_SIZE);
     this.dc_send(conn, {
       type: 'file-meta', fileId,
       name: file.name, size: file.size,
       mime: file.type || 'application/octet-stream',
-      totalChunks, chunkSize: CHUNK_SIZE,
+      totalChunks, chunkSize: BINARY_CHUNK_SIZE,
     });
 
     const t0       = Date.now();
     let bytesSent  = 0;
 
+    // Convert fileId (nanoID is 16 chars) to a fixed 16-byte array
+    const fileIdBytes = new Uint8Array(16);
+    const encodedId = new TextEncoder().encode(fileId);
+    fileIdBytes.set(encodedId.slice(0, 16));
+
     for (let i = 0; i < totalChunks; i++) {
       // Hardware-level Backpressure — wait for buffer depletion
-      if (conn.dc && conn.dc.bufferedAmount > 4 * 1024 * 1024) {
+      if (conn.dc && conn.dc.bufferedAmount > 8 * 1024 * 1024) { // 8 MB buffer threshold
         await new Promise<void>(resolve => {
           const handler = () => {
             if (conn.dc) conn.dc.onbufferedamountlow = null;
             resolve();
           };
           conn.dc!.onbufferedamountlow = handler;
-          if (conn.dc!.bufferedAmount <= 1024 * 1024) {
+          if (conn.dc!.bufferedAmount <= 2 * 1024 * 1024) {
             if (conn.dc) conn.dc.onbufferedamountlow = null;
             resolve();
           }
@@ -252,9 +264,21 @@ export class WebRTCManager {
       }
       if (!conn.dc || conn.dc.readyState !== 'open') throw new Error('Connection lost during transfer');
 
-      const sliceBuf = await file.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE).arrayBuffer();
-      const b64      = this.ab2b64(sliceBuf);
-      this.dc_send(conn, { type: 'file-chunk', fileId, index: i, data: b64, total: totalChunks });
+      const sliceBuf = await file.slice(i * BINARY_CHUNK_SIZE, (i + 1) * BINARY_CHUNK_SIZE).arrayBuffer();
+      
+      // Construct raw binary packet:
+      // Header: 16 bytes fileId + 4 bytes index + 4 bytes total
+      const packet = new Uint8Array(24 + sliceBuf.byteLength);
+      packet.set(fileIdBytes, 0);
+      
+      const view = new DataView(packet.buffer);
+      view.setUint32(16, i, false);
+      view.setUint32(20, totalChunks, false);
+      
+      packet.set(new Uint8Array(sliceBuf), 24);
+
+      // Send the raw ArrayBuffer directly!
+      conn.dc.send(packet.buffer);
 
       bytesSent += sliceBuf.byteLength;
       const elapsed = Math.max((Date.now() - t0) / 1000, 0.01);
@@ -268,7 +292,7 @@ export class WebRTCManager {
       onProgress?.(pct, speed, eta);
 
       // Yield periodically to allow browser UI thread to paint frames smoothly
-      if (i % 30 === 0) {
+      if (i % 20 === 0) {
         await new Promise(r => requestAnimationFrame(r));
       }
     }
@@ -339,7 +363,7 @@ export class WebRTCManager {
 
     if (!accepted) {
       this.dc_send(conn, { type: 'call-answer', callId, accepted: false });
-      this.activeCall.localStream?.getTracks().forEach(t => t.stop());
+      this.cleanupCallMedia(this.activeCall.peerId);
       this.emit({ type: 'call-ended', callId, reason: 'declined' });
       this.activeCall = null;
       return;
@@ -358,9 +382,11 @@ export class WebRTCManager {
 
   endCall(reason?: string) {
     if (!this.activeCall) return;
-    const { callId, peerId, localStream } = this.activeCall;
+    const { callId, peerId } = this.activeCall;
     if (this.ringTimer) { clearTimeout(this.ringTimer); this.ringTimer = null; }
-    localStream?.getTracks().forEach(t => t.stop());
+    
+    this.cleanupCallMedia(peerId);
+
     const conn = this.peers.get(peerId);
     if (conn) {
       this.dc_send(conn, { type: 'call-end', callId, reason });
@@ -369,6 +395,20 @@ export class WebRTCManager {
     }
     this.emit({ type: 'call-ended', callId, reason });
     this.activeCall = null;
+  }
+
+  private cleanupCallMedia(peerId: string) {
+    if (this.activeCall?.peerId === peerId) {
+      this.activeCall.localStream?.getTracks().forEach(t => { try { t.stop(); } catch {} });
+      this.activeCall.remoteStream?.getTracks().forEach(t => { try { t.stop(); } catch {} });
+    }
+    const audio = document.getElementById(`audio-${peerId}`);
+    if (audio) {
+      try {
+        (audio as HTMLAudioElement).srcObject = null;
+        audio.remove();
+      } catch {}
+    }
   }
 
   toggleMute(): boolean {
@@ -394,7 +434,10 @@ export class WebRTCManager {
   getActiveCall(): ActiveCall | null { return this.activeCall; }
 
   // ── Groups ────────────────────────────────────────────────────────────────
-  createRoom(name: string) { this.sig({ type: 'room-create', from: this.myId, payload: { name } }); }
+  createRoom(name: string, inviteeIds?: string[]) {
+    this.pendingRoomInvites = inviteeIds ?? [];
+    this.sig({ type: 'room-create', from: this.myId, payload: { name } });
+  }
   joinRoom(roomId: string) { this.sig({ type: 'room-join',   from: this.myId, roomId }); }
   leaveRoom(roomId: string) {
     this.sig({ type: 'room-leave', from: this.myId, roomId });
@@ -536,6 +579,22 @@ export class WebRTCManager {
         };
         this.rooms.set(msg.roomId, room);
         this.emit({ type: 'room-updated', room });
+
+        // Auto P2P direct invitation broadcast for newly created rooms
+        if (msg.type === 'room-info' && this.pendingRoomInvites.length > 0) {
+          this.pendingRoomInvites.forEach(peerId => {
+            const conn = this.peers.get(peerId);
+            if (conn?.dc?.readyState === 'open') {
+              this.dc_send(conn, {
+                type: 'group-invite',
+                roomId: room.id,
+                roomName: room.name
+              });
+            }
+          });
+          this.pendingRoomInvites = [];
+        }
+
         members.forEach((m: RemotePeer) => { if (m.id !== this.myId) this.connectToPeer(m.id); });
         break;
       }
@@ -680,8 +739,56 @@ export class WebRTCManager {
     };
 
     dc.onmessage = ({ data }) => {
-      try { this.handleDC(conn, JSON.parse(data as string)); } catch {}
+      if (typeof data === 'string') {
+        try { this.handleDC(conn, JSON.parse(data)); } catch {}
+      } else if (data instanceof ArrayBuffer) {
+        this.handleBinaryDC(conn, data);
+      }
     };
+  }
+
+  private async handleBinaryDC(conn: PeerConn, data: ArrayBuffer) {
+    conn.info.lastSeen = Date.now();
+    const pid = conn.info.id;
+
+    if (data.byteLength < 24) return;
+    const view = new DataView(data);
+    const fileIdBytes = new Uint8Array(data, 0, 16);
+    const fileId = new TextDecoder().decode(fileIdBytes).replace(/\0/g, '');
+    const index = view.getUint32(16, false);
+    const total = view.getUint32(20, false);
+    const chunkData = new Uint8Array(data, 24);
+
+    const tf = conn.inFiles.get(fileId);
+    if (!tf) return;
+
+    tf.received++;
+    tf.bytesIn += chunkData.byteLength;
+    const elapsed = Math.max((Date.now() - tf.startedAt) / 1000, 0.01);
+    const bps     = tf.bytesIn / elapsed;
+    const pct     = Math.round((tf.received / total) * 100);
+
+    this.emit({
+      type: 'file-progress',
+      peerId: pid,
+      fileId,
+      progress: pct,
+      speed: this.fmtSpeed(bps),
+      eta: this.fmtETA((tf.size - tf.bytesIn) / bps)
+    });
+
+    if (tf.writableStream) {
+      try {
+        await tf.writableStream.write(chunkData);
+      } catch (err) {
+        console.error("Error writing raw binary chunk directly to disk:", err);
+      }
+    } else {
+      if (!tf.binaryChunks) {
+        tf.binaryChunks = new Array(total).fill(null);
+      }
+      tf.binaryChunks[index] = chunkData;
+    }
   }
 
   private dc_send(conn: PeerConn, msg: DataMsg) {
@@ -717,14 +824,55 @@ export class WebRTCManager {
 
       // ── File transfer ─────────────────────────────────────────────────────
       case 'file-meta': {
-        const accept = window.confirm(`${conn.info.name} wants to send you a file:\n"${msg.name}" (${formatBytes(msg.size)})\n\nDo you want to accept this transfer?`);
-        if (!accept) break;
-        conn.inFiles.set(msg.fileId, {
-          name: msg.name, size: msg.size, mime: msg.mime,
-          chunks: new Array(msg.totalChunks).fill(null),
-          received: 0, startedAt: Date.now(), bytesIn: 0,
-        });
-        this.emit({ type: 'message', msg: { id: msg.fileId, peerId: pid, mine: false, file: { name: msg.name, size: msg.size, mime: msg.mime, progress: 0, done: false }, ts: Date.now(), read: false } });
+        const startTransfer = async () => {
+          // If directoryHandle is already set, write directly to folder
+          if (conn.directoryHandle) {
+            try {
+              const fileHandle = await conn.directoryHandle.getFileHandle(msg.name, { create: true });
+              const writableStream = await fileHandle.createWritable();
+              conn.inFiles.set(msg.fileId, {
+                name: msg.name, size: msg.size, mime: msg.mime,
+                chunks: [],
+                binaryChunks: [],
+                writableStream,
+                received: 0, startedAt: Date.now(), bytesIn: 0,
+              });
+              this.emit({ type: 'message', msg: { id: msg.fileId, peerId: pid, mine: false, file: { name: msg.name, size: msg.size, mime: msg.mime, progress: 0, done: false }, ts: Date.now(), read: false } });
+              return;
+            } catch (err) {
+              console.error("Auto-save folder write failed, falling back to prompt", err);
+            }
+          }
+
+          // Prompt user
+          const accept = window.confirm(`${conn.info.name} wants to send you a file:\n"${msg.name}" (${formatBytes(msg.size)})\n\nSelect OK to save automatically (supports 100GB+ files, direct fast transfer!)\nSelect Cancel to skip`);
+          if (!accept) return;
+
+          let writableStream: any = null;
+          if ('showDirectoryPicker' in window) {
+            const selectDir = window.confirm("Would you like to select a directory to auto-save this and all subsequent files from this peer?");
+            if (selectDir) {
+              try {
+                const handle = await (window as any).showDirectoryPicker();
+                conn.directoryHandle = handle;
+                const fileHandle = await handle.getFileHandle(msg.name, { create: true });
+                writableStream = await fileHandle.createWritable();
+              } catch (err) {
+                console.warn("Directory picker cancelled or failed, using fast memory buffer");
+              }
+            }
+          }
+
+          conn.inFiles.set(msg.fileId, {
+            name: msg.name, size: msg.size, mime: msg.mime,
+            chunks: [],
+            binaryChunks: [],
+            writableStream,
+            received: 0, startedAt: Date.now(), bytesIn: 0,
+          });
+          this.emit({ type: 'message', msg: { id: msg.fileId, peerId: pid, mine: false, file: { name: msg.name, size: msg.size, mime: msg.mime, progress: 0, done: false }, ts: Date.now(), read: false } });
+        };
+        startTransfer().catch(console.error);
         break;
       }
       case 'file-chunk': {
@@ -742,29 +890,25 @@ export class WebRTCManager {
       case 'file-done': {
         const tf = conn.inFiles.get(msg.fileId);
         if (!tf) break;
-        const allReceived = tf.chunks.every(c => c !== null);
-        if (allReceived) {
-          const chunks = tf.chunks as string[];
+
+        if (tf.writableStream) {
           (async () => {
-            const blobs: any[] = [];
-            for (let i = 0; i < chunks.length; i++) {
-              const bin = atob(chunks[i]);
-              const u8 = new Uint8Array(bin.length);
-              for (let j = 0; j < bin.length; j++) {
-                u8[j] = bin.charCodeAt(j);
-              }
-              blobs.push(u8);
-              
-              // Yield to event loop every 300 chunks (~5 MB of Base64)
-              if (i % 300 === 0) {
-                await new Promise(r => setTimeout(r, 0));
-              }
+            try {
+              await tf.writableStream.close();
+              this.emit({ type: 'file-progress', peerId: pid, fileId: msg.fileId, progress: 100 });
+              conn.inFiles.delete(msg.fileId);
+            } catch (err) {
+              console.error("Error closing writable stream:", err);
             }
-            
-            const url = URL.createObjectURL(new Blob(blobs, { type: tf.mime }));
+          })();
+        } else if (tf.binaryChunks && tf.binaryChunks.length > 0) {
+          const binaryChunks = tf.binaryChunks;
+          (async () => {
+            const allChunks = binaryChunks.filter(Boolean) as Uint8Array[];
+            const blob = new Blob(allChunks as any[], { type: tf.mime });
+            const url = URL.createObjectURL(blob);
             this.emit({ type: 'file-progress', peerId: pid, fileId: msg.fileId, progress: 100, url });
 
-            // ➔ Automatically trigger the save/download dialog on completion!
             const a = document.createElement('a');
             a.href = url;
             a.download = tf.name;
@@ -772,9 +916,40 @@ export class WebRTCManager {
             a.click();
             document.body.removeChild(a);
             conn.inFiles.delete(msg.fileId);
-          })().catch(() => {});
+          })();
         } else {
-          conn.inFiles.delete(msg.fileId);
+          const allReceived = tf.chunks.every(c => c !== null);
+          if (allReceived) {
+            const chunks = tf.chunks as string[];
+            (async () => {
+              const blobs: any[] = [];
+              for (let i = 0; i < chunks.length; i++) {
+                const bin = atob(chunks[i]);
+                const u8 = new Uint8Array(bin.length);
+                for (let j = 0; j < bin.length; j++) {
+                  u8[j] = bin.charCodeAt(j);
+                }
+                blobs.push(u8);
+                
+                if (i % 300 === 0) {
+                  await new Promise(r => setTimeout(r, 0));
+                }
+              }
+              
+              const url = URL.createObjectURL(new Blob(blobs, { type: tf.mime }));
+              this.emit({ type: 'file-progress', peerId: pid, fileId: msg.fileId, progress: 100, url });
+
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = tf.name;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              conn.inFiles.delete(msg.fileId);
+            })().catch(() => {});
+          } else {
+            conn.inFiles.delete(msg.fileId);
+          }
         }
         break;
       }
@@ -822,7 +997,7 @@ export class WebRTCManager {
           this.activeCall = { ...this.activeCall, state: 'active', startedAt: Date.now() };
           this.emit({ type: 'call-updated', call: { ...this.activeCall } });
         } else {
-          this.activeCall.localStream?.getTracks().forEach(t => t.stop());
+          this.cleanupCallMedia(pid);
           this.emit({ type: 'call-ended', callId: msg.callId, reason: 'declined' });
           this.activeCall = null;
         }
@@ -830,7 +1005,7 @@ export class WebRTCManager {
       }
       case 'call-end': {
         if (this.activeCall?.callId === msg.callId) {
-          this.activeCall.localStream?.getTracks().forEach(t => t.stop());
+          this.cleanupCallMedia(pid);
           this.emit({ type: 'call-ended', callId: msg.callId, reason: msg.reason });
           this.activeCall = null;
         }
@@ -838,7 +1013,7 @@ export class WebRTCManager {
       }
       case 'call-busy': {
         if (this.activeCall?.callId === msg.callId) {
-          this.activeCall.localStream?.getTracks().forEach(t => t.stop());
+          this.cleanupCallMedia(pid);
           this.emit({ type: 'call-ended', callId: msg.callId, reason: 'busy' });
           this.activeCall = null;
         }
@@ -862,6 +1037,12 @@ export class WebRTCManager {
         this.emit({ type: 'group-call-leave', roomId: msg.roomId, leaverId: msg.leaverId });
         break;
       }
+      case 'group-invite': {
+        this.joinRoom(msg.roomId);
+        this.listRooms();
+        this.emit({ type: 'group-invite-received', roomId: msg.roomId, roomName: msg.roomName });
+        break;
+      }
       case 'reaction': {
         this.emit({ type: 'reaction', peerId: pid, msgId: msg.msgId, emoji: msg.emoji });
         break;
@@ -874,10 +1055,7 @@ export class WebRTCManager {
     if (!conn) return;
     if (conn.pingTimer) clearInterval(conn.pingTimer);
     try { conn.pc.close(); } catch {}
-    const audio = document.getElementById(`audio-${id}`);
-    if (audio) {
-      try { (audio as HTMLAudioElement).srcObject = null; audio.remove(); } catch {}
-    }
+    this.cleanupCallMedia(id);
     this.peers.delete(id);
     this.emit({ type: 'peer-removed', peerId: id });
   }

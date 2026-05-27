@@ -92,6 +92,7 @@ export interface GroupCallInvite { type: 'group-call-invite'; roomId: string; ca
 export interface GroupCallJoin   { type: 'group-call-join';   roomId: string; joinerId: string }
 export interface GroupCallLeave  { type: 'group-call-leave';  roomId: string; leaverId: string }
 export interface ReactionMsg     { type: 'reaction';          msgId: string; emoji: string }
+export interface GroupInviteMsg  { type: 'group-invite';      roomId: string; roomName: string }
 
 export type DataMsg =
   | HelloMsg | ChatMsg | TypingMsg | ReadMsg
@@ -101,7 +102,8 @@ export type DataMsg =
   | CallInvite | CallAnswer | CallEnd | CallBusy
   | GroupMsg
   | GroupCallInvite | GroupCallJoin | GroupCallLeave
-  | ReactionMsg;
+  | ReactionMsg
+  | GroupInviteMsg;
 
 // ── Push payload ──────────────────────────────────────────────────────────────
 export interface PushPayload {
@@ -123,7 +125,7 @@ export type CallKind = 'voice' | 'video';
 // ── Constants ─────────────────────────────────────────────────────────────────
 export const CHUNK_SIZE       = 16 * 1024;            // 16 KB per file chunk (safest standard for cross-browser WebRTC limits)
 export const VOICE_CHUNK      = 32  * 1024;            // 32 KB per voice chunk
-export const MAX_FILE_SIZE    = 2   * 1024 * 1024 * 1024; // 2 GB
+export const MAX_FILE_SIZE    = 200 * 1024 * 1024 * 1024; // 200 GB
 export const PROTOCOL_VERSION = '2.0.0';
 export const HEARTBEAT_MS     = 10_000;
 export const PEER_TIMEOUT_MS  = 30_000;

@@ -19,6 +19,7 @@ import {
   startCallRinging,
   stopCallRinging
 } from '@/lib/sounds';
+import { toast } from 'sonner';
 
 export type Screen = 'discover' | 'peers' | 'chat' | 'groups' | 'profile';
 
@@ -81,7 +82,7 @@ interface Actions {
   endCall:          (reason?: string) => void;
   toggleMute:       () => boolean;
   toggleVideo:      () => boolean;
-  createRoom:       (name: string) => void;
+  createRoom:       (name: string, inviteeIds?: string[]) => void;
   joinRoom:         (id: string) => void;
   leaveRoom:        (id: string) => void;
   sendGroupMessage: (roomId: string, text: string) => void;
@@ -246,6 +247,11 @@ export const useNexusStore = create<NexusState>()(
               case 'room-removed':
                 set(s => { delete s.rooms[ev.roomId]; });
                 break;
+              case 'group-invite-received':
+                toast.success(`You were added to group "${ev.roomName}"! 🎉`, {
+                  description: "Open the Groups tab to see the chat."
+                });
+                break;
             }
           });
 
@@ -365,7 +371,7 @@ export const useNexusStore = create<NexusState>()(
         toggleVideo()    { return get().manager?.toggleVideo() ?? false; },
 
         // ── Groups ─────────────────────────────────────────────────────────────
-        createRoom(name) { get().manager?.createRoom(name); },
+        createRoom(name, inviteeIds) { get().manager?.createRoom(name, inviteeIds); },
         joinRoom(id)     { get().manager?.joinRoom(id); },
         leaveRoom(id)    { get().manager?.leaveRoom(id); },
 

@@ -13,13 +13,24 @@ import type { GroupRoom } from '@/lib/webrtc-manager';
 function RoomModal({ onClose }: { onClose: () => void }) {
   const createRoom = useNexusStore(s => s.createRoom);
   const joinRoom   = useNexusStore(s => s.joinRoom);
+  const allPeers   = useNexusStore(s => Object.values(s.peers));
+  
   const [tab,  setTab]  = useState<'create' | 'join'>('create');
   const [name, setName] = useState('');
   const [id,   setId]   = useState('');
+  const [selectedPeerIds, setSelectedPeerIds] = useState<string[]>([]);
+
+  const onlinePeers = allPeers.filter(p => p.connected);
+
+  const toggleSelectPeer = (peerId: string) => {
+    setSelectedPeerIds(prev =>
+      prev.includes(peerId) ? prev.filter(pid => pid !== peerId) : [...prev, peerId]
+    );
+  };
 
   const doCreate = () => {
     if (!name.trim()) { toast.error('Enter a room name'); return; }
-    createRoom(name.trim()); toast('Room created!'); onClose();
+    createRoom(name.trim(), selectedPeerIds); toast('Room created!'); onClose();
   };
   const doJoin = () => {
     if (!id.trim()) { toast.error('Enter a room ID'); return; }
@@ -67,6 +78,47 @@ function RoomModal({ onClose }: { onClose: () => void }) {
               className="w-full px-4 py-3 rounded-[12px] border border-[#e4e4e0] text-[14px] font-sans bg-[#f9f9f8] placeholder-[#c0c0bc] text-black"
               style={{ outline: 'none' }}
             />
+
+            {/* Peer selection list */}
+            {onlinePeers.length > 0 && (
+              <div className="mt-2.5">
+                <span className="text-[11px] font-mono font-medium text-black px-1 block mb-2">
+                  Select Members to Add Directly
+                </span>
+                <div className="max-h-[140px] overflow-y-auto divide-y divide-[#f5f5f3] border border-[#e4e4e0] rounded-[14px] px-2 bg-[#f9f9f8] scroll-touch">
+                  {onlinePeers.map(peer => {
+                    const isSelected = selectedPeerIds.includes(peer.id);
+                    return (
+                      <button
+                        key={peer.id}
+                        onClick={() => toggleSelectPeer(peer.id)}
+                        className="w-full py-2.5 px-1.5 flex items-center justify-between transition-colors text-left"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-[26px] h-[26px] rounded-full bg-[#f0f0ee] border border-[#e4e4e0] flex items-center justify-center text-[10px] font-medium text-black shrink-0">
+                            {peer.initials}
+                          </div>
+                          <span className="text-[12.5px] font-medium text-black truncate max-w-[150px]">
+                            {peer.name}
+                          </span>
+                        </div>
+                        <div className={cn(
+                          "w-[16px] h-[16px] rounded-full border flex items-center justify-center transition-all duration-150",
+                          isSelected ? "bg-black border-black" : "border-[#c8c8c2] bg-white"
+                        )}>
+                          {isSelected && (
+                            <svg className="w-2.5 h-2.5 stroke-white" fill="none" strokeWidth="3" viewBox="0 0 24 24">
+                              <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <p className="text-[11px] font-mono font-light text-[#a0a09a] px-1">
               Anyone with the room ID can join. Up to 8 peers for group calls.
             </p>
@@ -100,6 +152,71 @@ function RoomModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ── Invite modal ──────────────────────────────────────────────────────────────
+function InviteModal({
+  onClose,
+  onlineInvitees,
+  onInvite
+}: {
+  onClose: () => void;
+  onlineInvitees: any[];
+  onInvite: (peerId: string) => void;
+}) {
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      style={{ background: 'rgba(0,0,0,0.28)' }}
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
+      <motion.div
+        className="bg-white w-full max-w-lg rounded-t-[24px] px-5 pt-5"
+        style={{ paddingBottom: 'calc(20px + var(--safe-bottom))' }}
+        initial={{ y: 90 }} animate={{ y: 0 }} exit={{ y: 90 }}
+        transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="w-9 h-[3px] bg-[#e4e4e0] rounded-full mx-auto mb-5" />
+        <h3 className="text-[14px] font-medium text-black mb-3 px-1">Add Members Directly</h3>
+
+        <div className="max-h-[260px] overflow-y-auto divide-y divide-[#f5f5f3] mb-4">
+          {onlineInvitees.length === 0 ? (
+            <p className="text-[12px] font-mono font-light text-[#a0a09a] py-6 text-center">
+              No online peers available to invite
+            </p>
+          ) : (
+            onlineInvitees.map(peer => (
+              <button
+                key={peer.id}
+                onClick={() => onInvite(peer.id)}
+                className="w-full py-3 px-1.5 flex items-center justify-between hover:bg-[#f9f9f8] active:bg-[#f5f5f3] transition-colors rounded-[12px] text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-[#f0f0ee] border border-[#e4e4e0] flex items-center justify-center text-[11px] font-medium text-black">
+                    {peer.initials}
+                  </div>
+                  <div>
+                    <div className="text-[13px] font-medium text-black">{peer.name}</div>
+                    <div className="text-[9px] font-mono font-light text-[#22c55e]">online</div>
+                  </div>
+                </div>
+                <div className="px-2.5 py-1 bg-[#080808] text-white text-[10px] font-mono font-medium rounded-full active:scale-95 transition-transform">
+                  Add
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+
+        <button onClick={onClose}
+          className="w-full text-center py-3 bg-[#f5f5f3] rounded-[12px] text-[12px] font-medium text-black hover:bg-[#ebebea] active:bg-[#e4e4e0] transition-colors">
+          Close
+        </button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // ── Group chat ─────────────────────────────────────────────────────────────────
 function GroupChat({ room, onBack }: { room: GroupRoom; onBack: () => void }) {
   const myId          = useNexusStore(s => s.myId);
@@ -108,9 +225,11 @@ function GroupChat({ room, onBack }: { room: GroupRoom; onBack: () => void }) {
   const sendGroupMsg  = useNexusStore(s => s.sendGroupMessage);
   const leaveRoom     = useNexusStore(s => s.leaveRoom);
   const thread        = useNexusStore(selectGroupThread(room.id));
+  const allPeers      = useNexusStore(s => Object.values(s.peers));
 
   const [text,         setText]         = useState('');
   const [showMembers,  setShowMembers]  = useState(false);
+  const [showInvite,   setShowInvite]   = useState(false);
   
   // Group Voice Call states
   const [callState,    setCallState]    = useState<'active' | null>(null);
@@ -122,6 +241,35 @@ function GroupChat({ room, onBack }: { room: GroupRoom; onBack: () => void }) {
   const taRef     = useRef<HTMLTextAreaElement>(null);
   const msgRef    = useAutoscroll([thread.length]);
   const autoResize = useAutoResize(taRef);
+
+  const onlineInvitees = allPeers.filter(p => p.connected && !room.members.some(m => m.id === p.id));
+
+  const leaveCall = useCallback(() => {
+    if (!manager) return;
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(t => t.stop());
+      localStreamRef.current = null;
+    }
+    room.members.forEach(member => {
+      const conn = (manager as any).peers?.get(member.id);
+      if (conn?.dc?.readyState === 'open') {
+        (manager as any).dc_send(conn, { type: 'group-call-leave', roomId: room.id, leaverId: myId });
+        const senders = conn.pc.getSenders();
+        senders.forEach((sender: any) => {
+          if (sender.track?.kind === 'audio') {
+            conn.pc.removeTrack(sender);
+          }
+        });
+      }
+      const audio = document.getElementById(`audio-${member.id}`);
+      if (audio) {
+        try { (audio as HTMLAudioElement).srcObject = null; audio.remove(); } catch {}
+      }
+    });
+    setCallState(null);
+    setCallMembers([]);
+    toast('Left group conference');
+  }, [manager, room.members, myId]);
 
   // Group Call signaling listeners
   useEffect(() => {
@@ -141,15 +289,37 @@ function GroupChat({ room, onBack }: { room: GroupRoom; onBack: () => void }) {
       }
       if (ev.type === 'group-call-leave' && ev.roomId === room.id) {
         setCallMembers(prev => prev.filter(id => id !== ev.leaverId));
+        const audio = document.getElementById(`audio-${ev.leaverId}`);
+        if (audio) {
+          try { (audio as HTMLAudioElement).srcObject = null; audio.remove(); } catch {}
+        }
       }
     });
     return () => {
       unsub();
+      // Ensure we leave the call and clean up local and remote audio elements on unmount!
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(t => t.stop());
+        localStreamRef.current = null;
       }
+      room.members.forEach(member => {
+        const conn = (manager as any).peers?.get(member.id);
+        if (conn?.dc?.readyState === 'open') {
+          (manager as any).dc_send(conn, { type: 'group-call-leave', roomId: room.id, leaverId: myId });
+          const senders = conn.pc.getSenders();
+          senders.forEach((sender: any) => {
+            if (sender.track?.kind === 'audio') {
+              conn.pc.removeTrack(sender);
+            }
+          });
+        }
+        const audio = document.getElementById(`audio-${member.id}`);
+        if (audio) {
+          try { (audio as HTMLAudioElement).srcObject = null; audio.remove(); } catch {}
+        }
+      });
     };
-  }, [manager, room.id, myId]);
+  }, [manager, room.id, myId, room.members]);
 
   const startCall = async () => {
     if (!manager) return;
@@ -203,27 +373,19 @@ function GroupChat({ room, onBack }: { room: GroupRoom; onBack: () => void }) {
     }
   };
 
-  const leaveCall = () => {
-    if (!manager) return;
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(t => t.stop());
-      localStreamRef.current = null;
+  const inviteMember = (peerId: string) => {
+    const conn = (manager as any).peers?.get(peerId);
+    if (conn?.dc?.readyState === 'open') {
+      (manager as any).dc_send(conn, {
+        type: 'group-invite',
+        roomId: room.id,
+        roomName: room.name
+      });
+      toast.success(`Group invitation sent to ${conn.info.name}!`);
+    } else {
+      toast.error('Peer not connected');
     }
-    room.members.forEach(member => {
-      const conn = (manager as any).peers?.get(member.id);
-      if (conn?.dc?.readyState === 'open') {
-        (manager as any).dc_send(conn, { type: 'group-call-leave', roomId: room.id, leaverId: myId });
-        const senders = conn.pc.getSenders();
-        senders.forEach((sender: any) => {
-          if (sender.track?.kind === 'audio') {
-            conn.pc.removeTrack(sender);
-          }
-        });
-      }
-    });
-    setCallState(null);
-    setCallMembers([]);
-    toast('Left group conference');
+    setShowInvite(false);
   };
 
   const send = useCallback(() => {
@@ -268,10 +430,19 @@ function GroupChat({ room, onBack }: { room: GroupRoom; onBack: () => void }) {
           </button>
         </div>
 
-        <button onClick={copyId}
-          className="px-2.5 py-1 rounded-full border border-[#e4e4e0] text-[9px] font-mono font-light text-[#8a8a84] hover:border-black hover:text-black transition-colors shrink-0">
-          Copy ID
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {onlineInvitees.length > 0 && (
+            <button onClick={() => setShowInvite(true)}
+              className="px-2.5 py-1 rounded-full bg-[#080808] hover:bg-black text-white text-[9px] font-mono font-medium transition-colors cursor-pointer shrink-0">
+              Add Member
+            </button>
+          )}
+
+          <button onClick={copyId}
+            className="px-2.5 py-1 rounded-full border border-[#e4e4e0] text-[9px] font-mono font-light text-[#8a8a84] hover:border-black hover:text-black transition-colors shrink-0">
+            Copy ID
+          </button>
+        </div>
 
         {/* Group Voice Call trigger */}
         {room.members.filter(m => m.connected).length > 0 && !callState && (
@@ -443,6 +614,16 @@ function GroupChat({ room, onBack }: { room: GroupRoom; onBack: () => void }) {
           </button>
         </div>
       </div>
+
+      <AnimatePresence>
+        {showInvite && (
+          <InviteModal
+            onClose={() => setShowInvite(false)}
+            onlineInvitees={onlineInvitees}
+            onInvite={inviteMember}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

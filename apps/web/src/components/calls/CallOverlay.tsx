@@ -16,18 +16,20 @@ export function CallOverlay() {
   const [elapsed, setElapsed] = useState(0);
   const [speaker, setSpeaker] = useState(false);
   const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
-  const localVidRef = useRef<HTMLVideoElement>(null);
-  const remoteVidRef= useRef<HTMLVideoElement>(null);
-  const remoteAudRef= useRef<HTMLAudioElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const ringTimerRef= useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Attach streams
-  useEffect(() => {
-    if (call?.localStream  && localVidRef.current)  localVidRef.current.srcObject  = call.localStream;
-    if (call?.remoteStream && remoteVidRef.current)  remoteVidRef.current.srcObject = call.remoteStream;
-    if (call?.remoteStream && remoteAudRef.current)  remoteAudRef.current.srcObject = call.remoteStream;
-  }, [call?.localStream, call?.remoteStream]);
+  const setLocalVideo = useCallback((el: HTMLVideoElement | null) => {
+    if (el) el.srcObject = call?.localStream || null;
+  }, [call?.localStream]);
+
+  const setRemoteVideo = useCallback((el: HTMLVideoElement | null) => {
+    if (el) el.srcObject = call?.remoteStream || null;
+  }, [call?.remoteStream]);
+
+  const setRemoteAudio = useCallback((el: HTMLAudioElement | null) => {
+    if (el) el.srcObject = call?.remoteStream || null;
+  }, [call?.remoteStream]);
 
   // Call timer
   useEffect(() => {
@@ -99,11 +101,11 @@ export function CallOverlay() {
       >
         {/* Remote video */}
         {isVideo && isActive && (
-          <video ref={remoteVidRef} autoPlay playsInline className="absolute inset-0 w-full h-full object-cover" />
+          <video ref={setRemoteVideo} autoPlay playsInline className="absolute inset-0 w-full h-full object-cover" />
         )}
 
         {/* Audio element (voice calls / voice in video call) */}
-        <audio ref={remoteAudRef} autoPlay />
+        <audio ref={setRemoteAudio} autoPlay />
 
         {/* Top section — peer info */}
         <div className="relative z-10 flex flex-col items-center pt-[20%] flex-1">
@@ -147,7 +149,7 @@ export function CallOverlay() {
           {/* Local video PiP */}
           {isVideo && isActive && (
             <div className="absolute top-4 right-4 w-28 h-40 rounded-[14px] overflow-hidden border border-white/20 shadow-2xl">
-              <video ref={localVidRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+              <video ref={setLocalVideo} autoPlay playsInline muted className="w-full h-full object-cover" />
             </div>
           )}
         </div>

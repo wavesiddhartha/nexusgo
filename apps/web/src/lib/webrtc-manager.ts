@@ -1018,11 +1018,12 @@ export class WebRTCManager {
           }
 
           let writableStream: any = null;
+          const sanitizedName = msg.name.replace(/[\/\\]/g, '_'); // Prevent Path Traversal attacks
           
           // 1. If part of a batch or directory picker is active
           if (conn.directoryHandle) {
             try {
-              const fileHandle = await conn.directoryHandle.getFileHandle(msg.name, { create: true });
+              const fileHandle = await conn.directoryHandle.getFileHandle(sanitizedName, { create: true });
               writableStream = await fileHandle.createWritable();
             } catch (err) {
               console.error("Auto-save folder write failed", err);
@@ -1040,7 +1041,7 @@ export class WebRTCManager {
                 try {
                   const handle = await (window as any).showDirectoryPicker();
                   conn.directoryHandle = handle;
-                  const fileHandle = await handle.getFileHandle(msg.name, { create: true });
+                  const fileHandle = await handle.getFileHandle(sanitizedName, { create: true });
                   writableStream = await fileHandle.createWritable();
                 } catch (err) {
                   console.warn("Directory picker cancelled or failed, using fast memory buffer");
@@ -1059,7 +1060,7 @@ export class WebRTCManager {
           const incoming: IncomingFile = {
             name: msg.name, size: msg.size, mime: msg.mime,
             chunks: [],
-            binaryChunks: [],
+            binaryChunks: new Array(msg.totalChunks).fill(null), // Safe initial array allocation
             writableStream,
             received: 0, startedAt: Date.now(), bytesIn: 0,
             batchId: msg.batchId,

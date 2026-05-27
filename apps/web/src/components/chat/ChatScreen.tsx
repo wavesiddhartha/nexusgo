@@ -581,6 +581,7 @@ export function ChatScreen() {
   const [replyTarget, setReplyTarget] = useState<LocalMessage | null>(null);
   const [showTrust,  setShowTrust]  = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -645,17 +646,32 @@ export function ChatScreen() {
     if (taRef.current) taRef.current.style.height = 'auto';
   }, [text, activePeerId, peer, sendMessage, replyTarget]);
 
-  const handleFile = useCallback(async (files: any) => {
-    if (!activePeerId || !peer?.connected) { toast.error('Peer not connected'); return; }
+  const handleFile = useCallback((files: any) => {
     const fileArray = Array.from(files) as File[];
-    for (const file of fileArray) {
-      try { 
-        await sendFile(activePeerId, file); 
-      } catch (e: any) { 
-        toast.error(`${file.name}: ${e.message ?? 'Transfer failed'}`); 
+    setPendingFiles(prev => [...prev, ...fileArray]);
+  }, []);
+
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (items) {
+        const fileArray: File[] = [];
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          if (item.kind === 'file') {
+            const file = item.getAsFile();
+            if (file) fileArray.push(file);
+          }
+        }
+        if (fileArray.length > 0) {
+          e.preventDefault();
+          setPendingFiles(prev => [...prev, ...fileArray]);
+        }
       }
-    }
-  }, [activePeerId, peer, sendFile]);
+    };
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, []);
 
   const handleVoice = useCallback(async (blob: Blob, durationMs: number) => {
     if (!activePeerId || !peer?.connected) { toast.error('Peer not connected'); return; }
@@ -830,6 +846,76 @@ export function ChatScreen() {
           className="border-t border-[#ebebea] px-4 py-2.5 shrink-0 bg-white"
           style={{ paddingBottom: 'calc(10px + var(--safe-bottom))' }}
         >
+          {/* Send Files Preview Card */}
+          {pendingFiles.length > 0 && (
+            <div className="mb-2.5 p-3.5 bg-[#fbfbfb] border border-[#e4e4e0] rounded-[20px] shadow-[0_4px_24px_rgba(8,8,8,0.02)] animate-fadeIn select-none">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-mono font-medium uppercase tracking-wider text-[#8a8a84] flex items-center gap-1.5">
+                  Ready to send {pendingFiles.length} item{pendingFiles.length > 1 ? 's' : ''}
+                </span>
+                <button
+                  onClick={() => setPendingFiles([])}
+                  className="text-[10px] font-mono font-medium text-red-500 hover:text-red-600 cursor-pointer"
+                >
+                  Cancel All
+                </button>
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1 max-h-[82px] scroll-touch scrollbar-none">
+                {pendingFiles.map((file, idx) => {
+                  const isImg = file.type.startsWith('image/');
+                  return (
+                    <div
+                      key={idx}
+                      className="relative w-14 h-14 rounded-[12px] border border-[#e4e4e0]/60 bg-[#fafaf9] flex items-center justify-center p-1 shrink-0 overflow-hidden group/thumb"
+                    >
+                      {isImg ? (
+                        <img
+                          src={URL.createObjectURL(file)}
+                          alt={file.name}
+                          className="w-full h-full object-cover rounded-[8px]"
+                          onLoad={(e) => URL.revokeObjectURL((e.target as any).src)}
+                        />
+                      ) : (
+                        <div className="text-center flex flex-col items-center select-none">
+                          <svg className="w-4 h-4 stroke-[#9a9a94] fill-none" strokeWidth="1.5" viewBox="0 0 24 24">
+                            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+                            <polyline points="13 2 13 9 20 9"/>
+                          </svg>
+                          <span className="text-[8px] text-[#a0a09a] truncate max-w-[48px] mt-0.5 font-light">{file.name}</span>
+                        </div>
+                      )}
+                      <button
+                        onClick={() => setPendingFiles(prev => prev.filter((_, i) => i !== idx))}
+                        className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/85 hover:bg-black flex items-center justify-center cursor-pointer shadow-sm active:scale-90 transition-all"
+                      >
+                        <svg className="w-2.5 h-2.5 stroke-white" fill="none" strokeWidth="2.5" viewBox="0 0 24 24">
+                          <line x1="18" y1="6" x2="6" y2="18"/>
+                          <line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              <button
+                onClick={async () => {
+                  if (!activePeerId || !peer?.connected) { toast.error('Peer not connected'); return; }
+                  const filesToSend = [...pendingFiles];
+                  setPendingFiles([]);
+                  for (const file of filesToSend) {
+                    try {
+                      await sendFile(activePeerId, file);
+                    } catch (e: any) {
+                      toast.error(`${file.name}: ${e.message ?? 'Transfer failed'}`);
+                    }
+                  }
+                }}
+                className="w-full mt-2.5 py-2.5 bg-[#080808] hover:bg-black active:scale-[0.98] text-white text-[12.5px] font-medium rounded-[14px] transition-all cursor-pointer text-center select-none shadow-[0_4px_16px_rgba(8,8,8,0.12)] font-mono"
+              >
+                Send Files via Direct P2P
+              </button>
+            </div>
+          )}
           {/* Reply Preview Card */}
           {replyTarget && (
             <div className="flex items-center justify-between bg-[#f5f5f3] border-l-4 border-[#080808] px-3.5 py-2 mb-2 rounded-r-[12px] animate-fadeIn select-none">

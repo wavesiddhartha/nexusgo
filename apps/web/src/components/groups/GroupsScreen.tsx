@@ -250,26 +250,28 @@ function GroupChat({ room, onBack }: { room: GroupRoom; onBack: () => void }) {
       localStreamRef.current.getTracks().forEach(t => t.stop());
       localStreamRef.current = null;
     }
-    room.members.forEach(member => {
-      const conn = (manager as any).peers?.get(member.id);
-      if (conn?.dc?.readyState === 'open') {
+    
+    // Query active peers directly from manager to ensure robust cleanups
+    (manager as any).peers?.forEach((conn: any, peerId: string) => {
+      if (conn.dc?.readyState === 'open') {
         (manager as any).dc_send(conn, { type: 'group-call-leave', roomId: room.id, leaverId: myId });
-        const senders = conn.pc.getSenders();
-        senders.forEach((sender: any) => {
-          if (sender.track?.kind === 'audio') {
-            conn.pc.removeTrack(sender);
-          }
-        });
       }
-      const audio = document.getElementById(`audio-${member.id}`);
+      // Always stop active media track senders from PeerConnection regardless of DataChannel state
+      conn.pc.getSenders().forEach((sender: any) => {
+        if (sender.track?.kind === 'audio') {
+          try { conn.pc.removeTrack(sender); } catch {}
+        }
+      });
+      const audio = document.getElementById(`audio-${peerId}`);
       if (audio) {
         try { (audio as HTMLAudioElement).srcObject = null; audio.remove(); } catch {}
       }
     });
+
     setCallState(null);
     setCallMembers([]);
     toast('Left group conference');
-  }, [manager, room.members, myId]);
+  }, [manager, room.id, myId]);
 
   // Group Call signaling listeners
   useEffect(() => {
@@ -284,7 +286,8 @@ function GroupChat({ room, onBack }: { room: GroupRoom; onBack: () => void }) {
       if (ev.type === 'group-call-join' && ev.roomId === room.id) {
         if (ev.joinerId !== myId) {
           setCallMembers(prev => [...new Set([...prev, ev.joinerId])]);
-          toast(`${room.members.find(m => m.id === ev.joinerId)?.name || 'Someone'} joined conference`);
+          const currentRoom = (manager as any).rooms?.get(room.id) || room;
+          toast(`${currentRoom.members.find((m: any) => m.id === ev.joinerId)?.name || 'Someone'} joined conference`);
         }
       }
       if (ev.type === 'group-call-leave' && ev.roomId === room.id) {
@@ -302,24 +305,24 @@ function GroupChat({ room, onBack }: { room: GroupRoom; onBack: () => void }) {
         localStreamRef.current.getTracks().forEach(t => t.stop());
         localStreamRef.current = null;
       }
-      room.members.forEach(member => {
-        const conn = (manager as any).peers?.get(member.id);
-        if (conn?.dc?.readyState === 'open') {
-          (manager as any).dc_send(conn, { type: 'group-call-leave', roomId: room.id, leaverId: myId });
-          const senders = conn.pc.getSenders();
-          senders.forEach((sender: any) => {
+      if (manager) {
+        (manager as any).peers?.forEach((conn: any, peerId: string) => {
+          if (conn.dc?.readyState === 'open') {
+            (manager as any).dc_send(conn, { type: 'group-call-leave', roomId: room.id, leaverId: myId });
+          }
+          conn.pc.getSenders().forEach((sender: any) => {
             if (sender.track?.kind === 'audio') {
-              conn.pc.removeTrack(sender);
+              try { conn.pc.removeTrack(sender); } catch {}
             }
           });
-        }
-        const audio = document.getElementById(`audio-${member.id}`);
-        if (audio) {
-          try { (audio as HTMLAudioElement).srcObject = null; audio.remove(); } catch {}
-        }
-      });
+          const audio = document.getElementById(`audio-${peerId}`);
+          if (audio) {
+            try { (audio as HTMLAudioElement).srcObject = null; audio.remove(); } catch {}
+          }
+        });
+      }
     };
-  }, [manager, room.id, myId, room.members]);
+  }, [manager, room.id, myId]);
 
   const startCall = async () => {
     if (!manager) return;

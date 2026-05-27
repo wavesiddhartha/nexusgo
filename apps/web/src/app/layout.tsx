@@ -18,26 +18,26 @@ const dmMono = DM_Mono({
 });
 
 export const metadata: Metadata = {
-  title:       'NEXUS — Peer-to-Peer Connection',
+  title:       'nexusgo',
   description: 'Instant, private, serverless communication. No accounts. No cloud.',
   manifest:    '/manifest.json',
   metadataBase: new URL('https://nexusgo.me'),
   openGraph: {
-    title:       'NEXUS — nexusgo.me',
+    title:       'nexusgo',
     description: 'Instant peer-to-peer communication. No accounts. No cloud.',
     url:         'https://nexusgo.me',
-    siteName:    'NEXUS',
+    siteName:    'nexusgo',
     type:        'website',
   },
   twitter: {
     card:        'summary',
-    title:       'NEXUS',
+    title:       'nexusgo',
     description: 'Instant peer-to-peer communication. No accounts. No cloud.',
   },
   other: {
     'mobile-web-app-capable':          'yes',
     'apple-mobile-web-app-capable':    'yes',
-    'apple-mobile-web-app-title':      'NEXUS',
+    'apple-mobile-web-app-title':      'nexusgo',
     'apple-mobile-web-app-status-bar': 'default',
   },
 };

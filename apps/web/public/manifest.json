@@ -1,6 +1,6 @@
 {
-  "name":             "NEXUS",
-  "short_name":       "NEXUS",
+  "name":             "nexusgo",
+  "short_name":       "nexusgo",
   "description":      "Instant peer-to-peer communication. No accounts. No cloud.",
   "start_url":        "/?source=pwa",
   "display":          "standalone",

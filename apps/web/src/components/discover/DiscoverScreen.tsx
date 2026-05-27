@@ -195,16 +195,24 @@ export function DiscoverScreen() {
           className="absolute z-10"
           style={{ left: '50%', top: '50%', transform: 'translate(-50%,-50%)' }}
         >
-          <div className="flex flex-col items-center gap-1.5">
+          <div className="flex flex-col items-center gap-1.5 font-mono select-none">
             <div className="relative flex items-center justify-center">
-              {[0, 1.5].map((delay, ri) => (
+              {/* Concentric Sonar waves with soft HSL color ripple */}
+              {[0, 1.3, 2.6, 3.9].map((delay, ri) => (
                 <div
                   key={ri}
-                  className="absolute rounded-full border border-black/[0.08] pointer-events-none"
-                  style={{ left: '50%', top: '50%', width: 54, height: 54, animation: `ring-pulse 3.8s ease-out ${delay}s infinite` }}
+                  className="absolute rounded-full border border-[#22c55e]/15 pointer-events-none sonar-wave-active"
+                  style={{ 
+                    left: '50%', 
+                    top: '50%', 
+                    width: 50, 
+                    height: 50, 
+                    animationDelay: `${delay}s`,
+                    background: 'radial-gradient(circle, rgba(34,197,94,0.015) 0%, rgba(34,197,94,0) 70%)'
+                  }}
                 />
               ))}
-              <div className="w-[48px] h-[48px] rounded-full bg-[#080808] text-white flex items-center justify-center text-[13px] font-medium relative z-10 shadow-[0_2px_16px_rgba(8,8,8,0.18)]">
+              <div className="w-[48px] h-[48px] rounded-full bg-[#080808] text-white flex items-center justify-center text-[13px] font-medium relative z-10 shadow-[0_4px_24px_rgba(8,8,8,0.15)] transition-all duration-300 hover:scale-105 active:scale-95">
                 yo
               </div>
             </div>
@@ -233,18 +241,18 @@ export function DiscoverScreen() {
                 whileDrag={{ scale: 1.15, zIndex: 40 }}
               >
                 <div
-                  className="flex flex-col items-center gap-1 cursor-pointer group"
+                  className="flex flex-col items-center gap-1 cursor-pointer group select-none"
                   onClick={e => handleNodeClick(peer, e, i)}
                 >
                   <div className="relative flex items-center justify-center">
                     <div
-                      className="absolute rounded-full border border-black/[0.04] pointer-events-none"
+                      className="absolute rounded-full border border-[#22c55e]/10 pointer-events-none sonar-wave-active"
                       style={{ 
                         left: '50%',
                         top: '50%',
-                        width: 46, 
-                        height: 46, 
-                        animation: `ring-pulse 4.8s ease-out ${(i * 0.55) % 2.4}s infinite` 
+                        width: 40, 
+                        height: 40, 
+                        animationDelay: `${(i * 0.8) % 3.6}s` 
                       }}
                     />
                     <div
@@ -291,15 +299,16 @@ export function DiscoverScreen() {
               transition={{ type: 'spring', stiffness: 500, damping: 32 }}
               onClick={e => e.stopPropagation()}
             >
-              <div className="w-48 bg-white rounded-[16px] border border-[#e8e8e4] shadow-[0_8px_32px_rgba(8,8,8,0.11)] p-3.5">
+              <div className="w-48 backdrop-blur-md bg-white/85 rounded-[20px] border border-[#e8e8e4]/60 shadow-[0_12px_40px_rgba(8,8,8,0.09)] p-3.5 select-none transition-all duration-300">
                 <div className="flex items-center gap-2.5 mb-3">
-                  <div className="w-8 h-8 rounded-full bg-[#f0f0ee] flex items-center justify-center text-[11px] font-medium shrink-0">
+                  <div className="w-8 h-8 rounded-full border border-[#deded8] flex items-center justify-center text-[11px] font-medium shrink-0 shadow-sm" style={{ background: getAvatarGradient(popup.peer.name) }}>
                     {popup.peer.initials}
                   </div>
                   <div>
                     <div className="text-[13px] font-medium text-black leading-tight">{popup.peer.name}</div>
-                    <div className="text-[10px] font-mono font-light text-[#a0a09a]">
-                      {popup.peer.pingMs != null ? `${popup.peer.pingMs}ms · ` : ''}WebRTC
+                    <div className="text-[10px] font-mono font-light text-[#22c55e] flex items-center gap-1.5 mt-0.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e] block live-dot" />
+                      {popup.peer.pingMs != null ? `${popup.peer.pingMs}ms · ` : ''}P2P Active
                     </div>
                   </div>
                 </div>
@@ -311,9 +320,14 @@ export function DiscoverScreen() {
                       fn: () => { setActivePeer(popup.peer.id); setScreen('chat'); setPopup(null); },
                     },
                     {
-                      label: 'Send file',
+                      label: 'Quick File Share',
                       icon: <><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></>,
-                      fn: () => { setActivePeer(popup.peer.id); setScreen('chat'); setPopup(null); },
+                      fn: () => { handleDirectShare('File'); },
+                    },
+                    {
+                      label: 'Quick Location',
+                      icon: <><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></>,
+                      fn: () => { handleDirectShare('Location'); },
                     },
                     {
                       label: 'Dismiss',
@@ -324,9 +338,9 @@ export function DiscoverScreen() {
                     <button
                       key={label}
                       onClick={fn}
-                      className="flex items-center gap-2.5 px-2.5 py-[8px] rounded-[9px] text-[12px] text-[#2a2a28] hover:bg-[#f5f5f3] active:bg-[#f0f0ee] transition-colors w-full text-left"
+                      className="flex items-center gap-2.5 px-2.5 py-[8px] rounded-[10px] text-[12px] text-[#2a2a28] hover:bg-[#f5f5f3]/80 active:bg-black active:text-white transition-all w-full text-left font-medium"
                     >
-                      <svg className="w-[13px] h-[13px] stroke-[#9a9a94] flex-shrink-0" fill="none" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                      <svg className="w-[13px] h-[13px] stroke-current text-[#9a9a94] flex-shrink-0 group-hover:text-black" fill="none" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
                         {icon}
                       </svg>
                       {label}

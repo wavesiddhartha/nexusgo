@@ -298,10 +298,13 @@ function GroupChat({ room, onBack }: { room: GroupRoom; onBack: () => void }) {
 
       {/* Active Conference bar */}
       {callState && (
-        <div className="bg-[#f9f9f8] border-b border-[#ebebea] px-4 py-3 flex items-center justify-between animate-fadeIn select-none">
+        <div className="backdrop-blur-md bg-white/75 border-b border-[#ebebea]/60 px-4 py-3 flex items-center justify-between animate-fadeIn select-none shadow-[0_8px_32px_rgba(8,8,8,0.02)]">
           <div className="flex items-center gap-3">
-            <div className="flex -space-x-1.5 overflow-hidden">
-              <div className="w-8 h-8 rounded-full bg-[#080808] text-white border-2 border-white flex items-center justify-center text-[10px] font-medium z-20">
+            <div className="flex -space-x-1.5 overflow-hidden p-0.5">
+              <div className={cn(
+                "w-8 h-8 rounded-full bg-[#080808] text-white border-2 border-white flex items-center justify-center text-[10px] font-medium z-20 transition-all duration-300",
+                !localMute && "border-green-500 speaker-ring-active"
+              )}>
                 yo
               </div>
               {callMembers.map(mid => {
@@ -310,7 +313,7 @@ function GroupChat({ room, onBack }: { room: GroupRoom; onBack: () => void }) {
                 return (
                   <div
                     key={mid}
-                    className="w-8 h-8 rounded-full bg-white border-2 border-white flex items-center justify-center text-[10px] font-medium relative shadow-sm"
+                    className="w-8 h-8 rounded-full bg-white border-2 border-white flex items-center justify-center text-[10px] font-medium relative shadow-sm transition-all duration-300 speaker-ring-active border-green-500/80"
                     style={{ zIndex: 10 }}
                   >
                     {member.initials}
@@ -319,7 +322,16 @@ function GroupChat({ room, onBack }: { room: GroupRoom; onBack: () => void }) {
               })}
             </div>
             <div>
-              <h4 className="text-[12px] font-medium text-black">Voice Call Active</h4>
+              <div className="flex items-center gap-2">
+                <h4 className="text-[12px] font-medium text-black">Voice Call Active</h4>
+                {!localMute && (
+                  <div className="flex items-end gap-[1.5px] h-[10px] w-[12px] mb-0.5 shrink-0 select-none">
+                    <span className="w-[2px] bg-[#22c55e] rounded-full eq-bar-1 origin-bottom h-full block" />
+                    <span className="w-[2px] bg-[#22c55e] rounded-full eq-bar-2 origin-bottom h-full block" />
+                    <span className="w-[2px] bg-[#22c55e] rounded-full eq-bar-3 origin-bottom h-full block" />
+                  </div>
+                )}
+              </div>
               <p className="text-[10px] font-mono font-light text-[#22c55e] mt-0.5">{callMembers.length + 1} connected</p>
             </div>
           </div>

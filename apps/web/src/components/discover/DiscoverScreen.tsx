@@ -51,6 +51,7 @@ export function DiscoverScreen() {
   const [popup,  setPopup]  = useState<{ peer: RemotePeer; x: number; y: number } | null>(null);
   const [mode,   setMode]   = useState<'wifi' | 'bt' | 'relay'>('wifi');
   const [msgVal, setMsgVal] = useState('');
+  const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const selectedPeer = peers.find(p => p.id === selectedId) ?? null;
   const myIni = nameToInitials(myName || 'NX');
@@ -255,7 +256,7 @@ export function DiscoverScreen() {
                   className={cn(isSel && 'dash-animate')}
                 />
                 {/* Bouncing Data Packet animation with pause at both ends */}
-                {state === 'connected' && (
+                {state === 'connected' && draggingId !== p.id && (
                   <circle r="3.5" fill="#22c55e" className="opacity-80">
                     <animateMotion
                       dur="4.5s"
@@ -365,6 +366,8 @@ export function DiscoverScreen() {
                 dragElastic={0.5}
                 dragTransition={{ bounceStiffness: 420, bounceDamping: 22 }}
                 whileDrag={{ scale: 1.15, zIndex: 40 }}
+                onDragStart={() => setDraggingId(peer.id)}
+                onDragEnd={() => setDraggingId(null)}
               >
                 <div
                   className="flex flex-col items-center gap-1.5 cursor-pointer group select-none"
@@ -455,6 +458,16 @@ export function DiscoverScreen() {
                       fn: () => { useNexusStore.getState().startCall(popup.peer.id, 'voice'); setPopup(null); },
                       disabled: !popup.peer.connected,
                     },
+                    ...(popup.peer.connected ? [] : [{
+                      label: isConnecting(popup.peer) ? 'Connecting…' : 'Connect now',
+                      icon: <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />,
+                      fn: () => {
+                        useNexusStore.getState().connectToPeer(popup.peer.id);
+                        setPopup(null);
+                        toast.info(`Initiating P2P connection to ${popup.peer.name}…`);
+                      },
+                      disabled: isConnecting(popup.peer),
+                    }]),
                     {
                       label: 'Dismiss',
                       icon: <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>,

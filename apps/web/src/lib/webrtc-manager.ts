@@ -879,6 +879,13 @@ export class WebRTCManager {
                 writableStream = await fileHandle.createWritable();
               } catch (err) {
                 console.warn("Directory picker cancelled or failed, using fast memory buffer");
+                if (msg.size > 2 * 1024 * 1024 * 1024) {
+                  window.alert("WARNING: Auto-save disabled. Receiving very large files (>2 GB) in-memory may crash your browser tab due to device memory limitations!");
+                }
+              }
+            } else {
+              if (msg.size > 2 * 1024 * 1024 * 1024) {
+                window.alert("WARNING: Auto-save disabled. Receiving very large files (>2 GB) in-memory may crash your browser tab due to device memory limitations!");
               }
             }
           }

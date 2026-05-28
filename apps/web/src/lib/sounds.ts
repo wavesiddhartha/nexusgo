@@ -145,3 +145,84 @@ export function stopCallRinging() {
     ringInterval = null;
   }
 }
+
+// 5. Peer Discovered: A clean, soft organic pitch-dropping bubble pop
+export function playDiscoveredSound() {
+  try {
+    const ctx = getContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(160, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.08);
+
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    osc.stop(ctx.currentTime + 0.08);
+  } catch (e) {
+    console.warn('[Sounds] failed to play discovered sound', e);
+  }
+}
+
+// 6. Transfer Initiated: A high-speed digital sliding whoosh/swipe sound
+export function playTransferStartSound() {
+  try {
+    const ctx = getContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(220, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1100, ctx.currentTime + 0.22);
+
+    gain.gain.setValueAtTime(0.0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.04, ctx.currentTime + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    osc.stop(ctx.currentTime + 0.22);
+  } catch (e) {
+    console.warn('[Sounds] failed to play transfer start sound', e);
+  }
+}
+
+// 7. Transfer Completed Chime: A bright major triad arpeggio chime (C6 -> E6 -> G6)
+export function playSuccessBellSound() {
+  try {
+    const ctx = getContext();
+    const now = ctx.currentTime;
+    
+    const playTone = (freq: number, delay: number, dur: number) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + delay);
+      
+      gain.gain.setValueAtTime(0.0, now + delay);
+      gain.gain.linearRampToValueAtTime(0.035, now + delay + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + delay + dur);
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc.start(now + delay);
+      osc.stop(now + delay + dur);
+    };
+
+    playTone(1046.50, 0.0, 0.45);  // C6
+    playTone(1318.51, 0.04, 0.45); // E6
+    playTone(1567.98, 0.08, 0.55); // G6
+  } catch (e) {
+    console.warn('[Sounds] failed to play success bell sound', e);
+  }
+}

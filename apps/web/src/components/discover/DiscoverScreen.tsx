@@ -273,6 +273,21 @@ export function DiscoverScreen() {
           })}
         </svg>
 
+        {/* Sonar sweep rotating line */}
+        {dims.w > 0 && (
+          <div
+            className="absolute rounded-full pointer-events-none opacity-25 animate-sonar-sweep"
+            style={{
+              width: Math.min(dims.w, dims.h) * 0.88,
+              height: Math.min(dims.w, dims.h) * 0.88,
+              left: '50%',
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: 'conic-gradient(from 0deg, rgba(34,197,94,0.18) 0deg, rgba(34,197,94,0.08) 30deg, rgba(34,197,94,0) 120deg, rgba(34,197,94,0) 360deg)',
+            }}
+          />
+        )}
+
         {/* Concentric calm soft green rings */}
         {dims.w > 0 && [0.3, 0.58, 0.86].map((scale, idx) => {
           const size = Math.min(dims.w, dims.h) * 0.44 * scale * 2;

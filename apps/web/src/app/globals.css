@@ -140,4 +140,18 @@ html { overflow-y: scroll; }
 }
 .animate-ping-slow { animation: ping-slow 2s cubic-bezier(0.16, 1, 0.3, 1) infinite; }
 
+/* Dynamic Radar Sonar Sweep scanner animation */
+@keyframes sonar-sweep {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+.animate-sonar-sweep {
+  animation: sonar-sweep 7s linear infinite;
+  will-change: transform;
+}
+
 

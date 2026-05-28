@@ -17,7 +17,10 @@ import {
   playReceivedSound,
   playConnectedSound,
   startCallRinging,
-  stopCallRinging
+  stopCallRinging,
+  playDiscoveredSound,
+  playTransferStartSound,
+  playSuccessBellSound
 } from '@/lib/sounds';
 import { toast } from 'sonner';
 
@@ -131,6 +134,8 @@ export const useNexusStore = create<NexusState>()(
                 set(s => { s.peers[ev.peer.id] = ev.peer; });
                 if (becomesConnected && get().soundsEnabled) {
                   playConnectedSound();
+                } else if (!prev && ev.type === 'peer-added' && get().soundsEnabled) {
+                  playDiscoveredSound();
                 }
                 break;
               }
@@ -180,25 +185,37 @@ export const useNexusStore = create<NexusState>()(
                 break;
               }
 
-              case 'file-progress':
+              case 'file-progress': {
+                let playedSuccess = false;
                 set(s => {
                   const t = s.threads[ev.peerId];
                   const m2 = t?.find(m => m.id === ev.fileId);
                   if (m2?.file) {
+                    const wasDone = m2.file.done;
                     m2.file.progress = ev.progress;
                     m2.file.done     = ev.progress === 100;
                     if (ev.url)   m2.file.url   = ev.url;
                     if (ev.speed) m2.file.speed = ev.speed;
                     if (ev.eta)   m2.file.eta   = ev.eta;
+
+                    if (!wasDone && ev.progress === 100) {
+                      playedSuccess = true;
+                    }
                   }
                 });
+                if (playedSuccess && get().soundsEnabled) {
+                  playSuccessBellSound();
+                }
                 break;
+              }
 
-              case 'batch-progress':
+              case 'batch-progress': {
+                let playedSuccess = false;
                 set(s => {
                   const t = s.threads[ev.peerId];
                   const m2 = t?.find(m => m.id === ev.batchId);
                   if (m2?.batch) {
+                    const wasDone = m2.batch.done;
                     if (ev.downloadedCount === -1) {
                       m2.batch.activeFileName = ev.activeFileName;
                       m2.batch.activeProgress = 0;
@@ -218,9 +235,16 @@ export const useNexusStore = create<NexusState>()(
                         m2.batch.done = true;
                       }
                     }
+                    if (!wasDone && m2.batch.done) {
+                      playedSuccess = true;
+                    }
                   }
                 });
+                if (playedSuccess && get().soundsEnabled) {
+                  playSuccessBellSound();
+                }
                 break;
+              }
 
               case 'voice-progress':
                 set(s => {
@@ -340,6 +364,7 @@ export const useNexusStore = create<NexusState>()(
                 existing.file.done = false;
               }
             });
+            if (get().soundsEnabled) playTransferStartSound();
             try {
               await m.sendFile(peerId, file, (pct, speed, eta) => {
                 set(s => {
@@ -386,6 +411,8 @@ export const useNexusStore = create<NexusState>()(
                 totalSize
               });
             }
+
+            if (get().soundsEnabled) playTransferStartSound();
 
             // Loop and send each file sequentially
             try {

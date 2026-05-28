@@ -872,7 +872,7 @@ export class WebRTCManager {
     const fileId = new TextDecoder().decode(fileIdBytes).replace(/\0/g, '');
     const index = view.getUint32(16, false);
     const total = view.getUint32(20, false);
-    const chunkData = new Uint8Array(data, 24);
+    const chunkData = new Uint8Array(data, 24).slice();
 
     const tf = conn.inFiles.get(fileId);
     if (!tf) return;

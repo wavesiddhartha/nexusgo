@@ -1186,7 +1186,8 @@ export class WebRTCManager {
                 // OPFS sandboxed file transfer completed! Trigger lazy streaming download
                 const root = await navigator.storage.getDirectory();
                 const fileHandle = await root.getFileHandle(tf.opfsFileId);
-                const file = await fileHandle.getFile();
+                const opfsFile = await fileHandle.getFile();
+                const file = new File([opfsFile], tf.name, { type: tf.mime || 'application/octet-stream' });
                 const url = URL.createObjectURL(file);
 
                 if (tf.batchId) {

@@ -555,9 +555,14 @@ export function DiscoverScreen() {
         </div>
 
         {/* Message input */}
-        <div className="flex items-center gap-2.5 bg-[#f5f5f3] rounded-full px-4.5 py-2.5 border border-transparent transition-colors duration-150 focus-within:border-[#d8d8d4]">
+        <div className={cn(
+          "flex items-center gap-2.5 rounded-full pl-5 pr-2 py-1.5 border transition-all duration-300 focus-within:shadow-md focus-within:scale-[1.01] ease-out",
+          selectedId && selectedPeer?.connected 
+            ? "bg-white border-[#e4e4e0] hover:border-[#a0a09a] focus-within:border-black shadow-sm"
+            : "bg-[#f5f5f3] border-transparent opacity-60 cursor-not-allowed"
+        )}>
           <input
-            className="flex-1 text-[13px] font-mono bg-transparent placeholder-[#c8c8c2] text-black leading-none disabled:opacity-50"
+            className="flex-1 text-[14px] font-sans font-light bg-transparent placeholder-[#b0b0a8] text-black leading-none outline-none border-none focus:ring-0 p-0"
             style={{ border: 'none', outline: 'none', boxShadow: 'none' }}
             placeholder={
               selectedPeer?.connected
@@ -574,9 +579,14 @@ export function DiscoverScreen() {
           <button
             onClick={handleSend}
             disabled={!msgVal.trim() || !selectedId || !selectedPeer?.connected}
-            className="w-7.5 h-7.5 rounded-full bg-black flex items-center justify-center shrink-0 active:scale-90 transition-transform duration-100 disabled:opacity-30"
+            className={cn(
+              "w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all duration-200",
+              msgVal.trim() && selectedId && selectedPeer?.connected
+                ? "bg-[#080808] hover:bg-black hover:scale-105 active:scale-95 shadow-sm text-white"
+                : "bg-[#ebebea] text-[#b0b0a8] cursor-not-allowed"
+            )}
           >
-            <svg className="w-[11.5px] h-[11.5px]" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+            <svg className="w-[13px] h-[13px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
               <line x1="22" y1="2" x2="11" y2="13"/>
               <polygon points="22 2 15 22 11 13 2 9 22 2"/>
             </svg>

@@ -291,7 +291,22 @@ function GroupChat({ room, onBack }: { room: GroupRoom; onBack: () => void }) {
         }
       }
       if (ev.type === 'group-call-leave' && ev.roomId === room.id) {
-        setCallMembers(prev => prev.filter(id => id !== ev.leaverId));
+        setCallMembers(prev => {
+          const next = prev.filter(id => id !== ev.leaverId);
+          if (next.length === 0) {
+            setTimeout(() => {
+              leaveCall();
+              toast('Call ended: All participants left');
+            }, 0);
+          }
+          return next;
+        });
+
+        setCallInvite(prev => {
+          if (prev?.id === ev.leaverId) return null;
+          return prev;
+        });
+
         const audio = document.getElementById(`audio-${ev.leaverId}`);
         if (audio) {
           try { (audio as HTMLAudioElement).srcObject = null; audio.remove(); } catch {}
@@ -448,7 +463,7 @@ function GroupChat({ room, onBack }: { room: GroupRoom; onBack: () => void }) {
         </div>
 
         {/* Group Voice Call trigger */}
-        {room.members.filter(m => m.connected).length > 0 && !callState && (
+        {room.members.some(m => allPeers.find(p => p.id === m.id)?.connected) && !callState && (
           <button
             onClick={startCall}
             className="w-8 h-8 rounded-[9px] flex items-center justify-center hover:bg-[#f5f5f3] active:bg-[#f0f0ee] transition-colors shrink-0"

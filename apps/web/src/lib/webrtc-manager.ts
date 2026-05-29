@@ -163,6 +163,7 @@ interface PeerConn {
   inFiles:      Map<string, IncomingFile>;
   inVoice:      Map<string, IncomingVoice>;
   directoryHandle?: any;
+  iceQueue:     RTCIceCandidateInit[];
 }
 
 // ── Manager ───────────────────────────────────────────────────────────────────
@@ -759,7 +760,7 @@ export class WebRTCManager {
       pingMs: null, connected: false, lastSeen: Date.now(),
       connectionState: pc.connectionState,
     };
-    const conn: PeerConn = { info, pc, dc: null, makingOffer: false, ignoreOffer: false, pingTimer: null, inFiles: new Map(), inVoice: new Map() };
+    const conn: PeerConn = { info, pc, dc: null, makingOffer: false, ignoreOffer: false, pingTimer: null, inFiles: new Map(), inVoice: new Map(), iceQueue: [] };
     this.peers.set(peerId, conn);
     this.emit({ type: 'peer-added', peer: { ...info } });
 
@@ -809,29 +810,57 @@ export class WebRTCManager {
     }
   }
 
+  private async drainICE(conn: PeerConn) {
+    const queue = conn.iceQueue;
+    conn.iceQueue = [];
+    for (const candidate of queue) {
+      try {
+        await conn.pc.addIceCandidate(candidate);
+      } catch (e) {
+        console.warn('Failed to add buffered ICE candidate', e);
+      }
+    }
+  }
+
   private async handleOffer(from: string, sdp: RTCSessionDescriptionInit) {
     if (!this.peers.has(from)) this.createConn(from, false);
     const conn = this.peers.get(from)!;
     const collision = sdp.type === 'offer' && (conn.makingOffer || conn.pc.signalingState !== 'stable');
     conn.ignoreOffer = collision;
     if (conn.ignoreOffer) return;
-    await conn.pc.setRemoteDescription(sdp);
-    if (sdp.type === 'offer') {
-      await conn.pc.setLocalDescription();
-      this.sig({ type: 'answer', from: this.myId, to: from, payload: conn.pc.localDescription });
+    try {
+      await conn.pc.setRemoteDescription(sdp);
+      await this.drainICE(conn);
+      if (sdp.type === 'offer') {
+        await conn.pc.setLocalDescription();
+        this.sig({ type: 'answer', from: this.myId, to: from, payload: conn.pc.localDescription });
+      }
+    } catch (e) {
+      console.warn('handleOffer error', e);
     }
   }
 
   private async handleAnswer(from: string, sdp: RTCSessionDescriptionInit) {
     const conn = this.peers.get(from);
     if (!conn || conn.pc.signalingState !== 'have-local-offer') return;
-    try { await conn.pc.setRemoteDescription(sdp); } catch {}
+    try {
+      await conn.pc.setRemoteDescription(sdp);
+      await this.drainICE(conn);
+    } catch (e) {
+      console.warn('handleAnswer error', e);
+    }
   }
 
   private async handleICE(from: string, candidate: RTCIceCandidateInit) {
     const conn = this.peers.get(from);
     if (!conn) return;
-    try { await conn.pc.addIceCandidate(candidate); } catch {}
+    if (!conn.pc.remoteDescription) {
+      conn.iceQueue.push(candidate);
+    } else {
+      try {
+        await conn.pc.addIceCandidate(candidate);
+      } catch (e) {}
+    }
   }
 
   private setupDC(conn: PeerConn, dc: RTCDataChannel) {

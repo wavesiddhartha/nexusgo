@@ -142,7 +142,8 @@ interface IncomingFile {
   chunks: (string | null)[];
   binaryChunks?: (Uint8Array | null)[];
   writableStream?: any;
-  writeQueue: Promise<void>; // Ensure sequential writes to prevent DOMException collisions
+  writeQueue: Uint8Array[]; // Flat queue of chunks to write
+  isWriting: boolean;
   opfsFileId?: string; // Tracks temporary file inside Origin Private File System
   received: number;
   startedAt: number;
@@ -363,9 +364,14 @@ export class WebRTCManager {
           };
           conn.dc!.onbufferedamountlow = handler;
 
-          // Fallback polling check every 50ms in case the browser event is missed/throttled
+          // Fallback polling check every 50ms in case the browser event is missed/throttled or channel drops
           timer = setInterval(() => {
-            if (conn.dc && conn.dc.bufferedAmount <= 1024 * 1024) {
+            if (!conn.dc || conn.dc.readyState !== 'open') {
+              cleanup();
+              resolve();
+              return;
+            }
+            if (conn.dc.bufferedAmount <= 1024 * 1024) {
               cleanup();
               resolve();
             }
@@ -971,14 +977,24 @@ export class WebRTCManager {
     }
 
     if (tf.writableStream) {
-      // Chain the write promise to the queue to ensure sequential writes
-      tf.writeQueue = tf.writeQueue.then(async () => {
-        try {
-          await tf.writableStream.write(chunkData);
-        } catch (err) {
-          console.error("Error writing raw binary chunk directly to disk:", err);
-        }
-      });
+      tf.writeQueue.push(chunkData);
+      if (!tf.isWriting) {
+        tf.isWriting = true;
+        (async () => {
+          try {
+            while (tf.writeQueue.length > 0) {
+              const chunk = tf.writeQueue.shift();
+              if (chunk) {
+                await tf.writableStream.write(chunk);
+              }
+            }
+          } catch (err) {
+            console.error("Error writing raw binary chunk directly to disk:", err);
+          } finally {
+            tf.isWriting = false;
+          }
+        })();
+      }
     } else {
       if (!tf.binaryChunks) {
         tf.binaryChunks = new Array(total).fill(null);
@@ -1155,7 +1171,8 @@ export class WebRTCManager {
             chunks: [],
             binaryChunks: writableStream ? undefined : new Array(msg.totalChunks).fill(null),
             writableStream,
-            writeQueue: Promise.resolve(),
+            writeQueue: [],
+            isWriting: false,
             opfsFileId,
             received: 0, startedAt: Date.now(), bytesIn: 0,
             batchId: msg.batchId,
@@ -1226,8 +1243,10 @@ export class WebRTCManager {
         if (tf.writableStream) {
           (async () => {
             try {
-              // Wait for all active writes in the promise queue to finish completely
-              await tf.writeQueue;
+              // Wait for all active writes in the queue to finish completely
+              while (tf.writeQueue.length > 0 || tf.isWriting) {
+                await new Promise(r => setTimeout(r, 50));
+              }
               await tf.writableStream.close();
 
               if (tf.opfsFileId) {

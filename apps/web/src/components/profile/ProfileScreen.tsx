@@ -12,13 +12,13 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
     <button
       onClick={() => onChange(!on)}
       className={cn(
-        'w-9.5 h-5.5 rounded-full relative transition-colors duration-300 shrink-0 ease-in-out',
+        'w-9 h-5 rounded-full relative transition-colors duration-300 shrink-0 ease-in-out',
         on ? 'bg-[#080808] ring-1 ring-[#080808]/10' : 'bg-[#e4e4e0] ring-1 ring-black/5'
       )}
     >
       <div className={cn(
-        'absolute top-[2.5px] w-4.5 h-4.5 rounded-full bg-white shadow-md transition-all duration-300 ease-out',
-        on ? 'left-[18px]' : 'left-[3px]'
+        'absolute top-[2px] w-4 h-4 rounded-full bg-white shadow-md transition-all duration-300 ease-out',
+        on ? 'left-[18px]' : 'left-[2px]'
       )} />
     </button>
   );
@@ -264,8 +264,8 @@ export function ProfileScreen() {
           </p>
           <div className="bg-white border border-[#f0f0ed] shadow-[0_2px_8px_rgba(0,0,0,0.02)] rounded-[22px] overflow-hidden divide-y divide-[#fafaf9]">
             {/* Encryption — always on */}
-            <div className="flex items-center gap-3 px-4.5 py-4">
-              <div className="w-8.5 h-8.5 rounded-xl bg-green-50 border border-[#dcfce7] flex items-center justify-center shrink-0">
+            <div className="flex items-center gap-3 px-5 py-4">
+              <div className="w-8 h-8 rounded-xl bg-green-50 border border-[#dcfce7] flex items-center justify-center shrink-0">
                 <svg className="w-[15px] h-[15px] stroke-[#16a34a]" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
                   <rect x="3" y="11" width="18" height="11" rx="2"/>
                   <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
@@ -284,8 +284,8 @@ export function ProfileScreen() {
               { icon: 'speaker', label: 'Synthesized sounds',  sub: 'Ambient UI sound chimes',   val: soundsEnabled, set: toggleSounds  },
               { icon: 'shield',  label: 'TURN Privacy Mode',   sub: 'Route all traffic via TURN',val: privacyMode,   set: togglePrivacy },
             ].map(({ icon, label, sub, val, set }) => (
-              <div key={label} className="flex items-center gap-3 px-4.5 py-4">
-                <div className="w-8.5 h-8.5 rounded-xl bg-[#fafaf9] border border-[#f0f0ed] flex items-center justify-center shrink-0">
+              <div key={label} className="flex items-center gap-3 px-5 py-4">
+                <div className="w-8 h-8 rounded-xl bg-[#fafaf9] border border-[#f0f0ed] flex items-center justify-center shrink-0">
                   <SettingIcon type={icon} />
                 </div>
                 <div className="flex-1">
@@ -309,7 +309,7 @@ export function ProfileScreen() {
               { label: 'Domain',   val: 'nexusgo.me'          },
               { label: 'Contact',  val: 'mail@nexusgo.me'     },
             ].map(({ label, val }) => (
-              <div key={label} className="flex items-center justify-between px-4.5 py-3.5">
+              <div key={label} className="flex items-center justify-between px-5 py-3.5">
                 <span className="text-[13px] font-medium text-black">{label}</span>
                 <span className="text-[11.5px] font-mono font-light text-[#a0a09a]">{val}</span>
               </div>

@@ -14,13 +14,16 @@
 html, body         { height: 100%; overflow: hidden; background: #fff; }
 #__next            { height: 100%; height: 100dvh; overflow: hidden; }
 
-/* ── Reset all focus / outline / box-shadow everywhere ─────────────────────── */
 *,
 *:focus,
 *:focus-visible,
 *:focus-within {
   outline:        none !important;
   outline-offset: 0    !important;
+}
+*:focus,
+*:focus-visible,
+*:focus-within {
   box-shadow:     none !important;
 }
 

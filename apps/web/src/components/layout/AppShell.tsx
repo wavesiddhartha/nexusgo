@@ -9,6 +9,7 @@ import { ProfileScreen }  from '@/components/profile/ProfileScreen';
 import { CallOverlay }    from '@/components/calls/CallOverlay';
 import { cn } from '@/lib/utils';
 import type { Screen } from '@/store/nexus.store';
+import { motion } from 'framer-motion';
 
 // ── Nav icons ─────────────────────────────────────────────────────────────────
 const NavIcon = ({ type, active }: { type: Screen; active: boolean }) => {
@@ -18,7 +19,7 @@ const NavIcon = ({ type, active }: { type: Screen; active: boolean }) => {
     case 'discover': return <svg {...base}><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/></svg>;
     case 'peers':    return <svg {...base}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
     case 'chat':     return <svg {...base}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>;
-    case 'groups':   return <svg {...base}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="17" y1="11" x2="23" y2="11"/></svg>;
+    case 'groups':   return <svg {...base}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 11V6a2 2 0 0 0-2-2h-3"/><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07"/></svg>;
     case 'profile':  return <svg {...base}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
     default:         return null;
   }
@@ -26,6 +27,7 @@ const NavIcon = ({ type, active }: { type: Screen; active: boolean }) => {
 
 export function AppShell() {
   const activeScreen = useNexusStore(s => s.activeScreen);
+  const activePeerId = useNexusStore(s => s.activePeerId);
   const setScreen    = useNexusStore(s => s.setScreen);
   const wsConnected  = useNexusStore(s => s.wsConnected);
   const myName       = useNexusStore(s => s.myName);
@@ -118,8 +120,14 @@ export function AppShell() {
 
       {/* ── Bottom nav ── */}
       <nav
-        className="flex border-t border-[#ebebea] bg-white shrink-0"
-        style={{ paddingBottom: 'var(--safe-bottom)' }}
+        className={cn(
+          "flex items-center justify-around bg-white/75 backdrop-blur-md border border-[#ebebea]/80 shadow-[0_8px_32px_rgba(8,8,8,0.06)] rounded-2xl mx-4 mb-4 mt-2 px-2 shrink-0 z-40 transition-all duration-300",
+          activeScreen === 'chat' && activePeerId && "max-md:hidden h-0 overflow-hidden !m-0 !border-0 !shadow-none"
+        )}
+        style={{ 
+          height: (activeScreen === 'chat' && activePeerId) ? 0 : 64,
+          paddingBottom: 'calc(4px + var(--safe-bottom) * 0.5)'
+        }}
       >
         {navItems.map(({ key, label, badge }) => {
           const active = activeScreen === key;
@@ -127,20 +135,27 @@ export function AppShell() {
             <button
               key={key}
               onClick={() => setScreen(key)}
-              className="flex-1 flex flex-col items-center justify-center pt-2.5 pb-1.5 relative min-w-0"
+              className="flex-1 flex flex-col items-center justify-center h-12 relative min-w-0 rounded-xl transition-all duration-200 active:scale-95 hover:bg-[#080808]/5"
+              style={{ minHeight: 44 }}
             >
               <NavIcon type={key} active={active} />
               <span className={cn(
-                'text-[9px] font-mono font-light tracking-wider mt-1 transition-colors duration-200',
+                'text-[9.5px] font-mono font-medium tracking-wider mt-1 transition-colors duration-200',
                 active ? 'text-[#080808]' : 'text-[#b8b8b0]'
               )}>
                 {label}
               </span>
-              {/* Active indicator dot */}
-              {active && <div className="w-[3px] h-[3px] rounded-full bg-[#080808] mt-1" />}
+              {/* Active indicator bar */}
+              {active && (
+                <motion.div 
+                  layoutId="activeTabIndicator"
+                  className="absolute bottom-1 w-5 h-[2px] rounded-full bg-[#080808]" 
+                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                />
+              )}
               {/* Unread badge */}
               {badge && !active && (
-                <div className="absolute top-2 right-[calc(50%-10px)] w-[5px] h-[5px] rounded-full bg-[#080808]" />
+                <div className="absolute top-1.5 right-[calc(50%-12px)] w-[6px] h-[6px] rounded-full bg-[#3b82f6] animate-pulse" />
               )}
             </button>
           );

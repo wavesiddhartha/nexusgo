@@ -139,26 +139,36 @@ export function DiscoverScreen() {
         className="flex-1 relative overflow-hidden"
         onClick={dismissPopup}
       >
-        {/* Label */}
-        <div className="absolute top-4 left-6 z-10 pointer-events-none select-none">
-          <span className="text-[10px] font-mono font-bold text-gray-400 tracking-wider uppercase">
-            NETWORK · <strong className="text-black font-semibold">{peers.length} PEERS</strong>
-          </span>
-        </div>
+        {/* Header Container */}
+        <div className="absolute top-4 left-6 right-6 z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pointer-events-none select-none">
+          <div className="pointer-events-none">
+            <span className="text-[10px] font-mono font-bold text-gray-400 tracking-wider uppercase">
+              NETWORK · <strong className="text-black font-semibold">{peers.length} PEERS</strong>
+            </span>
+          </div>
 
-        {/* Legend */}
-        <div className="absolute top-4 right-6 z-10 flex flex-col gap-1.5 bg-white/80 backdrop-blur-md px-3.5 py-2.5 rounded-xl border border-gray-100 shadow-sm text-[9px] font-mono select-none text-gray-500">
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e]" />
-            <span>connected</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#f59e0b]" />
-            <span>connecting</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-gray-200 border border-gray-300" />
-            <span>discovered</span>
+          {/* Legend */}
+          <div className="pointer-events-auto flex items-center gap-3 bg-white/90 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-[9.5px] font-mono select-none w-max">
+            <div className="flex items-center gap-1.5">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#22c55e]"></span>
+              </span>
+              <span className="text-[#080808] font-medium">connected</span>
+            </div>
+            <div className="w-px h-2 bg-gray-200" />
+            <div className="flex items-center gap-1.5">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#f59e0b]"></span>
+              </span>
+              <span className="text-gray-500 font-medium">connecting</span>
+            </div>
+            <div className="w-px h-2 bg-gray-200" />
+            <div className="flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-gray-300 border border-gray-400/20" />
+              <span className="text-gray-400">discovered</span>
+            </div>
           </div>
         </div>
 
@@ -273,35 +283,19 @@ export function DiscoverScreen() {
           })}
         </svg>
 
-        {/* Sonar sweep rotating line */}
-        {dims.w > 0 && (
-          <div
-            className="absolute rounded-full pointer-events-none opacity-25 animate-sonar-sweep"
-            style={{
-              width: Math.min(dims.w, dims.h) * 0.88,
-              height: Math.min(dims.w, dims.h) * 0.88,
-              left: '50%',
-              top: '50%',
-              transform: 'translate(-50%, -50%)',
-              background: 'conic-gradient(from 0deg, rgba(34,197,94,0.18) 0deg, rgba(34,197,94,0.08) 30deg, rgba(34,197,94,0) 120deg, rgba(34,197,94,0) 360deg)',
-            }}
-          />
-        )}
-
-        {/* Concentric calm soft green rings */}
-        {dims.w > 0 && [0.3, 0.58, 0.86].map((scale, idx) => {
+        {/* Concentric guide rings */}
+        {dims.w > 0 && [0.32, 0.62, 0.92].map((scale, idx) => {
           const size = Math.min(dims.w, dims.h) * 0.44 * scale * 2;
           return (
             <div
               key={idx}
-              className="absolute rounded-full border border-green-500/[0.04] pointer-events-none animate-pulse-slow"
+              className="absolute rounded-full border border-black/[0.025] pointer-events-none"
               style={{
                 width: size,
                 height: size,
                 left: '50%',
                 top: '50%',
                 transform: 'translate(-50%, -50%)',
-                animationDelay: `${idx * 0.5}s`
               }}
             />
           );
@@ -411,17 +405,19 @@ export function DiscoverScreen() {
           })}
         </AnimatePresence>
 
-        {/* Empty state positioned beautifully */}
+        {/* Scanning Indicator Pill */}
         {peers.length === 0 && (
           <div 
-            className="absolute z-0 pointer-events-none text-center space-y-1.5"
-            style={{ left: '50%', top: 'calc(50% - 110px)', transform: 'translate(-50%, -50%)' }}
+            className="absolute z-10 pointer-events-none text-center"
+            style={{ left: '50%', top: '16%', transform: 'translate(-50%, 0)' }}
           >
-            <div className="flex items-center justify-center gap-1.5 animate-pulse">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e] inline-block" />
-              <p className="text-[10px] font-mono font-semibold text-[#22c55e] tracking-widest uppercase">SCANNING…</p>
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-white border border-[#ebebea]/85 rounded-full shadow-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e] animate-pulse" />
+              <span className="text-[10px] font-mono font-medium text-black uppercase tracking-wider">SCANNING FOR PEERS</span>
             </div>
-            <p className="text-[9px] font-mono font-light text-[#b0b0a8] max-w-[190px] mx-auto leading-normal">Open on another device to connect instantly</p>
+            <p className="text-[10px] font-mono font-light text-[#a0a09a] mt-2 max-w-[200px] mx-auto leading-normal">
+              Open Nexus on other devices to connect
+            </p>
           </div>
         )}
 

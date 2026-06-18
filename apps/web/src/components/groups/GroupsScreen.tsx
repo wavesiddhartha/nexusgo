@@ -40,18 +40,30 @@ function RoomModal({ onClose }: { onClose: () => void }) {
   return (
     <motion.div
       className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: 'rgba(0,0,0,0.28)' }}
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{ background: 'rgba(0,0,0,0.35)' }}
+      initial={{ opacity: 0 }} 
+      animate={{ opacity: 1 }} 
+      exit={{ opacity: 0 }}
       onClick={onClose}
     >
       <motion.div
-        className="bg-white w-full max-w-lg rounded-t-[24px] px-5 pt-5"
-        style={{ paddingBottom: 'calc(20px + var(--safe-bottom))' }}
-        initial={{ y: 90 }} animate={{ y: 0 }} exit={{ y: 90 }}
-        transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+        className="bg-white w-full max-w-lg rounded-t-[24px] px-5 pt-4 shadow-2xl border-t border-[#ebebea]/45"
+        style={{ paddingBottom: 'calc(24px + var(--safe-bottom))' }}
+        initial={{ y: '100%' }} 
+        animate={{ y: 0 }} 
+        exit={{ y: '100%' }}
+        transition={{ type: 'spring', damping: 28, stiffness: 220 }}
+        drag="y"
+        dragConstraints={{ top: 0 }}
+        dragElastic={{ top: 0.1, bottom: 0.85 }}
+        onDragEnd={(e, info) => {
+          if (info.offset.y > 120 || info.velocity.y > 600) {
+            onClose();
+          }
+        }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="w-9 h-[3px] bg-[#e4e4e0] rounded-full mx-auto mb-5" />
+        <div className="w-10 h-1 bg-[#e4e4e0] rounded-full mx-auto mb-5 cursor-grab active:cursor-grabbing" />
 
         {/* Tabs */}
         <div className="flex bg-[#f5f5f3] rounded-[12px] p-1 mb-5">
@@ -661,76 +673,99 @@ export function GroupsScreen() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#ebebea] shrink-0">
-        <h2 className="text-[16px] font-medium text-black">Groups</h2>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-1.5 px-3 py-[6px] rounded-full border border-[#e4e4e0] text-[11px] font-medium hover:border-black active:border-black transition-colors"
-        >
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" viewBox="0 0 24 24">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          New Room
-        </button>
-      </div>
-
-      {/* Room list */}
-      <div className="flex-1 overflow-y-auto scroll-touch">
-        {rooms.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-4 px-8 text-center">
-            <svg className="w-12 h-12 stroke-[#deded8]" fill="none" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    <div className="flex h-full overflow-hidden bg-black">
+      <motion.div 
+        className="flex-1 flex flex-col min-w-0 relative bg-white overflow-hidden shadow-2xl animate-fadeIn"
+        animate={{
+          scale: showModal ? 0.96 : 1,
+          borderRadius: showModal ? '20px' : '0px',
+          y: showModal ? -8 : 0,
+        }}
+        transition={{ type: 'spring', damping: 28, stiffness: 220 }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#ebebea] shrink-0 bg-white">
+          <h2 className="text-[16px] font-semibold text-black">Groups</h2>
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-1.5 px-3 py-[6px] rounded-full border border-[#e4e4e0] text-[11px] font-medium hover:border-black active:scale-95 transition-all cursor-pointer bg-white"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" viewBox="0 0 24 24">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
-            <div>
-              <p className="text-[14px] font-medium text-[#5a5a55]">No group rooms yet</p>
-              <p className="text-[11px] font-mono font-light text-[#a0a09a] mt-1 leading-relaxed">
-                Create a room and share the ID with<br />anyone on NEXUS to start chatting
-              </p>
-            </div>
-            <button onClick={() => setShowModal(true)}
-              className="px-5 py-2.5 bg-[#080808] text-white rounded-full text-[12px] font-medium active:opacity-70 transition-opacity">
-              Create a Room
-            </button>
-          </div>
-        ) : (
-          <div className="divide-y divide-[#f5f5f3]">
-            {rooms.map(room => {
-              const unread = groupUnread[room.id] ?? 0;
-              return (
-                <button
-                  key={room.id}
-                  onClick={() => setActiveRoom(room.id)}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-[#f9f9f8] active:bg-[#f5f5f3] transition-colors text-left"
-                >
-                  <div className="w-10 h-10 rounded-[10px] bg-[#080808] text-white flex items-center justify-center text-[13px] font-medium shrink-0">
-                    {room.name.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[14px] font-medium text-black">{room.name}</div>
-                    <div className="text-[10px] font-mono font-light text-[#a0a09a] mt-0.5">
-                      {room.members.length} member{room.members.length !== 1 ? 's' : ''}
-                      {' · '}{room.members.filter(m => m.connected).length} online
-                    </div>
-                  </div>
-                  {unread > 0 && (
-                    <div className="w-5 h-5 rounded-full bg-[#080808] text-white text-[10px] font-medium flex items-center justify-center shrink-0">
-                      {unread > 9 ? '9+' : unread}
-                    </div>
-                  )}
-                  <svg className="w-4 h-4 stroke-[#c0c0bc] shrink-0" fill="none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-                    <polyline points="9 18 15 12 9 6"/>
+            New Room
+          </button>
+        </div>
+
+        {/* Room list */}
+        <div className="flex-1 overflow-y-auto scroll-touch bg-[#fafaf9]">
+          {rooms.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-6 px-8 text-center select-none bg-[#fafaf9]">
+              <div className="relative w-24 h-24 flex items-center justify-center">
+                {/* Clean concentric radar rings */}
+                <div className="absolute inset-0 rounded-full border border-black/[0.03]" />
+                <div className="absolute inset-2 rounded-full border border-black/[0.04]" />
+                <div className="absolute inset-4 rounded-full border border-black/[0.06]" />
+                <div className="absolute -inset-2 rounded-full border border-black/5 animate-ping-slow pointer-events-none" />
+                <div className="absolute inset-0 rounded-full border border-black/10 animate-pulse-slow pointer-events-none" />
+                
+                <div className="w-14 h-14 rounded-full bg-white border border-[#f0f0ed] shadow-sm flex items-center justify-center text-black z-10 relative">
+                  <svg className="w-5.5 h-5.5 stroke-current fill-none" strokeWidth="1.5" viewBox="0 0 24 24">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                   </svg>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                </div>
+              </div>
+              <div className="space-y-2 max-w-xs">
+                <h3 className="text-[16px] font-semibold text-black tracking-tight leading-snug">No Group Rooms</h3>
+                <p className="text-[12px] font-mono font-light text-[#9a9a94] leading-relaxed">
+                  Create a room and share the ID with anyone on Nexus to start a collaborative text, file, and voice mesh chat.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowModal(true)}
+                className="mt-1 px-6 py-2.5 rounded-full bg-black hover:bg-black/90 active:scale-95 text-white text-[12.5px] font-semibold transition-all shadow-sm cursor-pointer"
+              >
+                Create a Room
+              </button>
+            </div>
+          ) : (
+            <div className="bg-white divide-y divide-[#f5f5f3]">
+              {rooms.map(room => {
+                const unread = groupUnread[room.id] ?? 0;
+                return (
+                  <button
+                    key={room.id}
+                    onClick={() => setActiveRoom(room.id)}
+                    className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-[#f9f9f8] active:bg-[#f5f5f3] transition-colors text-left"
+                  >
+                    <div className="w-10 h-10 rounded-[10px] bg-[#080808] text-white flex items-center justify-center text-[13px] font-medium shrink-0">
+                      {room.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[14px] font-medium text-black">{room.name}</div>
+                      <div className="text-[10px] font-mono font-light text-[#a0a09a] mt-0.5">
+                        {room.members.length} member{room.members.length !== 1 ? 's' : ''}
+                        {' · '}{room.members.filter(m => m.connected).length} online
+                      </div>
+                    </div>
+                    {unread > 0 && (
+                      <div className="w-5 h-5 rounded-full bg-[#080808] text-white text-[10px] font-medium flex items-center justify-center shrink-0">
+                        {unread > 9 ? '9+' : unread}
+                      </div>
+                    )}
+                    <svg className="w-4 h-4 stroke-[#c0c0bc] shrink-0" fill="none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                      <polyline points="9 18 15 12 9 6"/>
+                    </svg>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </motion.div>
 
       <AnimatePresence>
         {showModal && <RoomModal onClose={() => setShowModal(false)} />}

@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { LocalMessage } from '@/lib/webrtc-manager';
 
-// ── File modal ─────────────────────────────────────────────────────────────────
+// ── File modal (Swipeable Bottom Sheet) ─────────────────────────────────────────
 function FileModal({ onClose, onSelect }: { onClose: () => void; onSelect: (f: any) => void }) {
   const options = [
     { label: 'Photo or Image', sub: 'JPEG · PNG · GIF · WebP',       accept: 'image/*',  icon: 'image' },
@@ -34,20 +34,32 @@ function FileModal({ onClose, onSelect }: { onClose: () => void; onSelect: (f: a
   return (
     <motion.div
       className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: 'rgba(0,0,0,0.3)' }}
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      transition={{ duration: 0.16 }}
+      style={{ background: 'rgba(0,0,0,0.35)' }}
+      initial={{ opacity: 0 }} 
+      animate={{ opacity: 1 }} 
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
       onClick={onClose}
     >
       <motion.div
-        className="bg-white w-full max-w-lg rounded-t-[24px] px-5 pt-5"
-        style={{ paddingBottom: 'calc(20px + var(--safe-bottom))' }}
-        initial={{ y: 90 }} animate={{ y: 0 }} exit={{ y: 90 }}
-        transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+        className="bg-white w-full max-w-lg rounded-t-[24px] px-5 pt-4 shadow-2xl border-t border-[#ebebea]/45"
+        style={{ paddingBottom: 'calc(24px + var(--safe-bottom))' }}
+        initial={{ y: '100%' }} 
+        animate={{ y: 0 }} 
+        exit={{ y: '100%' }}
+        transition={{ type: 'spring', damping: 28, stiffness: 220 }}
+        drag="y"
+        dragConstraints={{ top: 0 }}
+        dragElastic={{ top: 0.1, bottom: 0.85 }}
+        onDragEnd={(e, info) => {
+          if (info.offset.y > 120 || info.velocity.y > 600) {
+            onClose();
+          }
+        }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="w-9 h-[3px] bg-[#e4e4e0] rounded-full mx-auto mb-5" />
-        <h3 className="text-[15px] font-medium text-black mb-4">Share a file</h3>
+        <div className="w-10 h-1 bg-[#e4e4e0] rounded-full mx-auto mb-5 cursor-grab active:cursor-grabbing" />
+        <h3 className="text-[16px] font-semibold text-black mb-4 px-1">Share a file</h3>
         <div className="flex flex-col gap-2">
           {options.map(({ label, sub, accept, icon }) => (
             <button
@@ -63,10 +75,95 @@ function FileModal({ onClose, onSelect }: { onClose: () => void; onSelect: (f: a
             </button>
           ))}
         </div>
-        <button onClick={onClose} className="w-full text-center py-4 text-[12px] font-mono font-light text-[#a0a09a] hover:text-black transition-colors">
+        <button onClick={onClose} className="w-full text-center py-4 text-[12px] font-mono font-light text-[#a0a09a] hover:text-black transition-colors mt-2">
           Cancel
         </button>
       </motion.div>
+    </motion.div>
+  );
+}
+
+// ── Context Menu Overlay ─────────────────────────────────────────────────────
+function ContextMenuOverlay({ msg, onClose, onReply }: { msg: LocalMessage; onClose: () => void; onReply: () => void }) {
+  const sendReaction = useNexusStore(s => s.sendReaction);
+  const activePeerId = useNexusStore(s => s.activePeerId);
+  const copyText = () => {
+    if (msg.text) {
+      navigator.clipboard.writeText(msg.text);
+      toast.success('Copied to clipboard');
+    }
+    onClose();
+  };
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center p-4 bg-black/25 backdrop-blur-sm"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
+      <div className="w-full max-w-sm flex flex-col gap-3.5" onClick={e => e.stopPropagation()}>
+        {/* Reaction selector */}
+        <div className="bg-white border border-[#ebebea] rounded-full px-4 py-2.5 shadow-xl flex items-center justify-around">
+          {['👍', '❤️', '😂', '😮', '😢', '🙏'].map(emoji => (
+            <button
+              key={emoji}
+              onClick={() => {
+                if (activePeerId) sendReaction(activePeerId, msg.id, emoji);
+                onClose();
+              }}
+              className="text-[20px] hover:scale-125 active:scale-95 transition-transform duration-100 cursor-pointer"
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+
+        {/* Highlighted Message preview */}
+        <div className="flex flex-col items-center bg-white border border-[#ebebea] rounded-2xl p-4 shadow-xl select-text max-w-full">
+          <span className="text-[9px] font-mono text-gray-400 mb-1.5 uppercase font-medium tracking-wider">Message Preview</span>
+          <div className="text-black text-[13px] leading-relaxed max-h-48 overflow-y-auto break-words text-center font-light">
+            {msg.text || (msg.file ? `📎 ${msg.file.name}` : msg.voice ? '🎙️ Voice Message' : 'Message')}
+          </div>
+        </div>
+
+        {/* Actions Menu */}
+        <div className="bg-white border border-[#ebebea] rounded-2xl p-2 shadow-xl flex flex-col gap-0.5">
+          <button
+            onClick={() => { onReply(); onClose(); }}
+            className="flex items-center gap-3 w-full px-3 py-2.5 text-left rounded-xl text-[12.5px] text-gray-800 hover:bg-[#f5f5f3] active:bg-[#ebebea] transition-colors"
+          >
+            <svg className="w-4 h-4 stroke-gray-500 fill-none" strokeWidth="1.5" viewBox="0 0 24 24">
+              <polyline points="9 17 4 12 9 7"/>
+              <path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
+            </svg>
+            Reply
+          </button>
+          {msg.text && (
+            <button
+              onClick={copyText}
+              className="flex items-center gap-3 w-full px-3 py-2.5 text-left rounded-xl text-[12.5px] text-gray-800 hover:bg-[#f5f5f3] active:bg-[#ebebea] transition-colors"
+            >
+              <svg className="w-4 h-4 stroke-gray-500 fill-none" strokeWidth="1.5" viewBox="0 0 24 24">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+              Copy Text
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="flex items-center gap-3 w-full px-3 py-2.5 text-left rounded-xl text-[12.5px] text-red-500 hover:bg-red-50 active:bg-red-100 transition-colors"
+          >
+            <svg className="w-4 h-4 stroke-red-500 fill-none" strokeWidth="1.5" viewBox="0 0 24 24">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+            Cancel
+          </button>
+        </div>
+      </div>
     </motion.div>
   );
 }
@@ -154,7 +251,7 @@ function groupThreadMessages(thread: LocalMessage[]): any[] {
   return result;
 }
 
-function GroupedFilesBubble({ group, onReply }: { group: any; onReply: (msg: LocalMessage) => void }) {
+function GroupedFilesBubble({ group, onReply, onContextMenu }: { group: any; onReply: (msg: LocalMessage) => void; onContextMenu: (msg: LocalMessage) => void }) {
   const files = group.files;
   const isMine = group.mine;
   
@@ -192,6 +289,10 @@ function GroupedFilesBubble({ group, onReply }: { group: any; onReply: (msg: Loc
         'flex items-center gap-2 group max-w-[85%] select-text transition-all duration-300 rounded-[18px]',
         isMine ? 'self-end flex-row-reverse' : 'self-start flex-row'
       )}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onContextMenu(files[0]);
+      }}
     >
       <div className={cn('flex flex-col', isMine ? 'items-end' : 'items-start')}>
         <div
@@ -311,7 +412,7 @@ function GroupedFilesBubble({ group, onReply }: { group: any; onReply: (msg: Loc
 }
 
 // ── Message bubble ─────────────────────────────────────────────────────────────
-function Bubble({ msg, onReply }: { msg: LocalMessage; onReply: (msg: LocalMessage) => void }) {
+function Bubble({ msg, onReply, onContextMenu }: { msg: LocalMessage; onReply: (msg: LocalMessage) => void; onContextMenu: (msg: LocalMessage) => void }) {
   const sendReaction = useNexusStore(s => s.sendReaction);
   const activePeerId = useNexusStore(s => s.activePeerId);
   const msgReactions = (msg as any).reactions ?? [];
@@ -356,6 +457,10 @@ function Bubble({ msg, onReply }: { msg: LocalMessage; onReply: (msg: LocalMessa
           'flex items-center gap-2 group max-w-[85%] select-text transition-all duration-300 rounded-[18px] relative',
           msg.mine ? 'self-end flex-row-reverse' : 'self-start flex-row'
         )}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onContextMenu(msg);
+        }}
       >
         {renderDock()}
         <div className={cn('flex flex-col relative', msg.mine ? 'items-end' : 'items-start')}>
@@ -392,6 +497,10 @@ function Bubble({ msg, onReply }: { msg: LocalMessage; onReply: (msg: LocalMessa
           'flex items-center gap-2 group max-w-[85%] select-text transition-all duration-300 rounded-[18px] relative',
           msg.mine ? 'self-end flex-row-reverse' : 'self-start flex-row'
         )}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onContextMenu(msg);
+        }}
       >
         {renderDock()}
         <div className={cn('flex flex-col relative', msg.mine ? 'items-end' : 'items-start')}>
@@ -504,6 +613,10 @@ function Bubble({ msg, onReply }: { msg: LocalMessage; onReply: (msg: LocalMessa
           'flex items-center gap-2 group max-w-[85%] select-text transition-all duration-300 rounded-[18px] relative',
           msg.mine ? 'self-end flex-row-reverse' : 'self-start flex-row'
         )}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onContextMenu(msg);
+        }}
       >
         {renderDock()}
         <div className={cn('flex flex-col relative', msg.mine ? 'items-end' : 'items-start')}>
@@ -592,6 +705,10 @@ function Bubble({ msg, onReply }: { msg: LocalMessage; onReply: (msg: LocalMessa
         'flex items-center gap-2 group max-w-[85%] select-text transition-all duration-300 rounded-[18px] relative',
         msg.mine ? 'self-end flex-row-reverse' : 'self-start flex-row'
       )}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onContextMenu(msg);
+      }}
     >
       {renderDock()}
       <div className={cn('flex flex-col relative', msg.mine ? 'items-end' : 'items-start')}>
@@ -693,6 +810,7 @@ export function ChatScreen() {
   const [showTrust,  setShowTrust]  = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [contextMenuMsg, setContextMenuMsg] = useState<LocalMessage | null>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -800,26 +918,47 @@ export function ChatScreen() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
-  // ── Empty state ──────────────────────────────────────────────────────────────
+  // ── Empty state (Select Peer) ────────────────────────────────────────────────
   if (!activePeerId || !peer) {
     return (
-      <div className="flex h-full">
+      <div className="flex h-full bg-[#fafaf9]">
         <PeerListSidebar activePeerId={null} onSelect={id => { setActivePeer(id); }} />
-        <div className="flex-1 flex flex-col items-center justify-center gap-3">
-          <svg className="w-11 h-11 stroke-[#deded8]" fill="none" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
-          <p className="text-[11px] font-mono font-light text-[#c0c0bc]">Select a peer to start chatting</p>
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center select-none">
+          <div className="relative w-24 h-24 mb-2 flex items-center justify-center">
+            {/* Radar effect */}
+            <div className="absolute inset-0 rounded-full border border-black/[0.04] animate-ping-slow pointer-events-none" />
+            <div className="absolute inset-2 rounded-full border border-black/[0.06] animate-pulse-slow pointer-events-none" />
+            <div className="w-16 h-16 rounded-full bg-white border border-[#ebebea] shadow-md flex items-center justify-center text-black">
+              <svg className="w-6 h-6 stroke-current fill-none" strokeWidth="1.5" viewBox="0 0 24 24">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+          </div>
+          <h3 className="text-[16px] font-semibold text-black leading-tight">Direct P2P Encrypted Chat</h3>
+          <p className="text-[12px] font-mono font-light text-[#9a9a94] max-w-xs leading-relaxed">
+            Select a nearby peer to establish an end-to-end encrypted connection. Files and calls transfer directly between your devices at full Wi-Fi speed.
+          </p>
         </div>
       </div>
     );
   }
 
+  const isSheetOpen = showModal || showTrust || contextMenuMsg !== null;
+
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex h-full overflow-hidden bg-black">
       <PeerListSidebar activePeerId={activePeerId} onSelect={id => setActivePeer(id)} />
 
-      <div className="flex-1 flex flex-col min-w-0 relative" onDragOver={handleDragOver}>
+      <motion.div 
+        className="flex-1 flex flex-col min-w-0 relative bg-white overflow-hidden shadow-2xl" 
+        onDragOver={handleDragOver}
+        animate={{
+          scale: isSheetOpen ? 0.96 : 1,
+          borderRadius: isSheetOpen ? '20px' : '0px',
+          y: isSheetOpen ? -8 : 0,
+        }}
+        transition={{ type: 'spring', damping: 28, stiffness: 220 }}
+      >
         {isDragging && (
           <div 
             onDragLeave={handleDragLeave}
@@ -917,15 +1056,35 @@ export function ChatScreen() {
           style={{ background: '#fefefe' }}
         >
           {thread.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center">
-              <p className="text-[11px] font-mono font-light text-[#d0d0cc]">No messages yet</p>
+            <div className="flex-1 flex flex-col items-center justify-center py-10 px-6 max-w-sm mx-auto text-center select-none">
+              <div className="w-14 h-14 rounded-full bg-[#fafaf9] border border-[#ebebea] flex items-center justify-center text-[18px] font-bold text-black shadow-sm mb-4">
+                {peer.initials}
+              </div>
+              <h4 className="text-[15px] font-semibold text-black leading-snug">Connected with {peer.name}</h4>
+              <p className="text-[11px] font-mono font-light text-[#9a9a94] mt-1 leading-relaxed">
+                Direct P2P Link · DTLS-SRTP Encrypted
+              </p>
+              <div className="mt-6 flex flex-wrap gap-2 justify-center">
+                <button
+                  onClick={() => sendMessage(activePeerId, "👋 Wave hello")}
+                  className="px-3.5 py-2 rounded-full border border-[#ebebea] bg-white text-[11px] text-[#5a5a55] hover:border-[#080808] hover:text-black transition-all active:scale-95"
+                >
+                  👋 Wave hello
+                </button>
+                <button
+                  onClick={() => setShowModal(true)}
+                  className="px-3.5 py-2 rounded-full border border-[#ebebea] bg-white text-[11px] text-[#5a5a55] hover:border-[#080808] hover:text-black transition-all active:scale-95"
+                >
+                  📎 Share file
+                </button>
+              </div>
             </div>
           ) : (
             groupThreadMessages(thread).map(msg => {
               if (msg.isGroupedFiles) {
-                return <GroupedFilesBubble key={msg.id} group={msg} onReply={setReplyTarget} />;
+                return <GroupedFilesBubble key={msg.id} group={msg} onReply={setReplyTarget} onContextMenu={setContextMenuMsg} />;
               }
-              return <Bubble key={msg.id} msg={msg} onReply={setReplyTarget} />;
+              return <Bubble key={msg.id} msg={msg} onReply={setReplyTarget} onContextMenu={setContextMenuMsg} />;
             })
           )}
 
@@ -1044,7 +1203,7 @@ export function ChatScreen() {
                 onClick={() => setReplyTarget(null)}
                 className="w-5 h-5 rounded-full hover:bg-[#e4e4e0] flex items-center justify-center shrink-0 ml-2"
               >
-                <svg className="w-3 h-3 stroke-[#5a5a55]" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                <svg className="w-3.5 h-3.5 stroke-[#5a5a55]" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
                   <line x1="18" y1="6" x2="6" y2="18"/>
                   <line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
@@ -1112,50 +1271,71 @@ export function ChatScreen() {
             )}
           </AnimatePresence>
         </div>
-      </div>
+      </motion.div>
 
       {/* File modal */}
       <AnimatePresence>
         {showModal && <FileModal onClose={() => setShowModal(false)} onSelect={handleFile} />}
       </AnimatePresence>
 
-      {/* E2E Trust Popup Modal */}
+      {/* E2E Trust Popup Modal (Swipeable Bottom Sheet) */}
       <AnimatePresence>
         {showTrust && (
           <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            style={{ background: 'rgba(0,0,0,0.3)' }}
+            className="fixed inset-0 z-50 flex items-end justify-center"
+            style={{ background: 'rgba(0,0,0,0.35)' }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setShowTrust(false)}
           >
             <motion.div
-              className="bg-white border border-[#ebebea] rounded-[24px] p-6 max-w-sm w-full text-center relative shadow-2xl"
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+              className="bg-white border-t border-[#ebebea] rounded-t-[24px] p-6 max-w-lg w-full text-center relative shadow-2xl"
+              style={{ paddingBottom: 'calc(24px + var(--safe-bottom))' }}
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 220 }}
+              drag="y"
+              dragConstraints={{ top: 0 }}
+              dragElastic={{ top: 0.1, bottom: 0.85 }}
+              onDragEnd={(e, info) => {
+                if (info.offset.y > 100 || info.velocity.y > 500) {
+                  setShowTrust(false);
+                }
+              }}
               onClick={e => e.stopPropagation()}
             >
+              <div className="w-10 h-1 bg-[#e4e4e0] rounded-full mx-auto mb-4 cursor-grab active:cursor-grabbing" />
               <div className="w-12 h-12 rounded-full bg-[#f0f0ee] flex items-center justify-center mx-auto mb-4 border border-[#e4e4e0]">
                 <svg className="w-5 h-5 stroke-black fill-none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
                   <rect x="3" y="11" width="18" height="11" rx="2" />
                   <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                 </svg>
               </div>
-              <h4 className="text-[15px] font-medium text-black mb-2">100% Peer-to-Peer Encrypted</h4>
-              <p className="text-[12px] font-mono font-light text-[#5a5a55] leading-relaxed mb-5">
+              <h4 className="text-[15px] font-semibold text-black mb-2">100% Peer-to-Peer Encrypted</h4>
+              <p className="text-[12px] font-mono font-light text-[#5a5a55] leading-relaxed mb-5 px-4">
                 NEXUS establishes a direct WebRTC DataChannel connection between your devices. All messages, calls, and files are encrypted end-to-end via DTLS-SRTP. Zero data ever touches any cloud server.
               </p>
               <button
                 onClick={() => setShowTrust(false)}
-                className="w-full py-2.5 bg-[#080808] text-white rounded-[12px] text-[12px] font-medium active:scale-95 transition-transform cursor-pointer"
+                className="w-full py-3 bg-[#080808] text-white rounded-[12px] text-[12px] font-medium active:scale-95 transition-transform cursor-pointer"
               >
                 Close
               </button>
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Context Menu Overlay */}
+      <AnimatePresence>
+        {contextMenuMsg && (
+          <ContextMenuOverlay
+            msg={contextMenuMsg}
+            onClose={() => setContextMenuMsg(null)}
+            onReply={() => setReplyTarget(contextMenuMsg)}
+          />
         )}
       </AnimatePresence>
     </div>

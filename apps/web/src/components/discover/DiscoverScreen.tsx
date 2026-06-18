@@ -44,6 +44,7 @@ export function DiscoverScreen() {
   const sendMessage   = useNexusStore(s => s.sendMessage);
   const sendFile      = useNexusStore(s => s.sendFile);
   const myName        = useNexusStore(s => s.myName);
+  const connectToPeer = useNexusStore(s => s.connectToPeer);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const dims      = useCanvasDimensions(canvasRef);
@@ -59,6 +60,14 @@ export function DiscoverScreen() {
   const handleNodeClick = useCallback((peer: RemotePeer, e: React.MouseEvent, i: number) => {
     e.stopPropagation();
     setSelected(peer.id);
+
+    // Automatically connect on node click if the peer is discovered but not connected or connecting
+    const state = peer.connected ? 'connected' : (isConnecting(peer) ? 'connecting' : 'discovered');
+    if (state === 'discovered') {
+      connectToPeer(peer.id);
+      toast.info(`Connecting to ${peer.name}…`);
+    }
+
     if (dims.w === 0) return;
     const [fx, fy] = POSITIONS[i % POSITIONS.length];
     const nx = fx * dims.w, ny = fy * dims.h;
@@ -69,7 +78,7 @@ export function DiscoverScreen() {
     if (y + popH > dims.h - 12) y = dims.h - popH - 12;
     if (y < 8) y = 8;
     setPopup({ peer, x: Math.max(6, x), y });
-  }, [dims, setSelected]);
+  }, [dims, setSelected, connectToPeer]);
 
   const dismissPopup = useCallback(() => { setPopup(null); }, []);
 

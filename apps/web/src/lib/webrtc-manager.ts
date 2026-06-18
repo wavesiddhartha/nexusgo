@@ -653,7 +653,9 @@ export class WebRTCManager {
 
   // ── Peer management ───────────────────────────────────────────────────────
   connectToPeer(id: string) {
-    if (id && id !== this.myId && !this.peers.has(id)) this.createConn(id, true);
+    if (id && id !== this.myId) {
+      this.createConn(id, true);
+    }
   }
   getPeers(): RemotePeer[] { return [...this.peers.values()].map(c => ({ ...c.info })); }
 
@@ -792,7 +794,24 @@ export class WebRTCManager {
 
   // ── RTCPeerConnection ─────────────────────────────────────────────────────
   private createConn(peerId: string, polite: boolean, name?: string) {
-    if (this.peers.has(peerId)) return;
+    if (this.peers.has(peerId)) {
+      const existing = this.peers.get(peerId)!;
+      if (name && name !== '…') {
+        existing.info.name = name;
+        existing.info.initials = initials(name);
+      }
+      if (existing.dc?.readyState === 'open' || existing.pc.connectionState === 'connecting' || existing.pc.connectionState === 'connected') {
+        return;
+      }
+      try {
+        if (existing.pingTimer) {
+          clearInterval(existing.pingTimer);
+          existing.pingTimer = null;
+        }
+        existing.pc.close();
+      } catch {}
+      this.peers.delete(peerId);
+    }
     const pc   = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     const info: RemotePeer = {
       id: peerId, name: name ?? '…', initials: initials(name ?? '?'),

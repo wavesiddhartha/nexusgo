@@ -94,8 +94,12 @@ async function pushNotify(targetId: string, payload: PushPayload) {
   }
 }
 
-function removePeer(id: string) {
+function removePeer(id: string, ws?: uWS.WebSocket<unknown>) {
   const peer = peers.get(id); if (!peer) return;
+  if (ws && peer.ws !== ws) {
+    log(`[keep] close triggered for old/different connection of ${peer.name} (${id})`);
+    return;
+  }
   // Leave all rooms
   for (const roomId of peer.rooms) {
     const room = rooms.get(roomId); if (!room) continue;
@@ -132,6 +136,14 @@ uWS.App()
           const id   = ((msg.from ?? '').trim() || crypto.randomUUID().slice(0, 16));
           const name = ((msg.payload as any)?.name ?? randomAnimeName()).slice(0, 64);
           (ws as any).id = id;
+
+          const existing = peers.get(id);
+          if (existing && existing.ws !== ws) {
+            log(`[cleanup] closing old socket for ${name} (${id})`);
+            (existing.ws as any).id = undefined;
+            try { existing.ws.close(); } catch {}
+          }
+
           peers.set(id, { id, name, ws, lastSeen: Date.now(), rooms: new Set() });
           log(`[+] ${name} (${id}) | online: ${peers.size}`);
           // Respond: peer list + VAPID key
@@ -242,7 +254,7 @@ uWS.App()
 
     close(ws) {
       const id: string | undefined = (ws as any).id;
-      if (id) removePeer(id);
+      if (id) removePeer(id, ws);
     },
   })
 

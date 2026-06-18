@@ -800,7 +800,7 @@ export class WebRTCManager {
         existing.info.name = name;
         existing.info.initials = initials(name);
       }
-      if (existing.dc?.readyState === 'open' || existing.pc.connectionState === 'connecting' || existing.pc.connectionState === 'connected') {
+      if (existing.dc?.readyState === 'open' || existing.pc.connectionState === 'connecting') {
         return;
       }
       try {

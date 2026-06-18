@@ -9,7 +9,8 @@ import { ProfileScreen }  from '@/components/profile/ProfileScreen';
 import { CallOverlay }    from '@/components/calls/CallOverlay';
 import { cn } from '@/lib/utils';
 import type { Screen } from '@/store/nexus.store';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import { formatBytes } from '@nexus/shared';
 
 // ── Nav icons ─────────────────────────────────────────────────────────────────
 const NavIcon = ({ type, active }: { type: Screen; active: boolean }) => {
@@ -36,6 +37,9 @@ export function AppShell() {
   const rooms        = useNexusStore(selectRoomList);
   const activeCall   = useNexusStore(s => s.activeCall);
   const groupUnread  = useNexusStore(s => Object.values(s.groupUnread).reduce((a, b) => a + b, 0));
+  const fileInvites  = useNexusStore(s => Object.values(s.fileInvites));
+  const acceptFileInvite = useNexusStore(s => s.acceptFileInvite);
+  const declineFileInvite = useNexusStore(s => s.declineFileInvite);
 
   const navItems: { key: Screen; label: string; badge?: boolean }[] = [
     { key: 'discover', label: 'Discover' },
@@ -164,6 +168,61 @@ export function AppShell() {
 
       {/* ── Global call overlay ── */}
       <CallOverlay />
+
+      {/* ── Non-blocking File Invites Overlay ── */}
+      <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[100] w-full max-w-sm px-4 pointer-events-none space-y-2">
+        <AnimatePresence>
+          {fileInvites.map(invite => (
+            <motion.div
+              key={invite.fileId}
+              initial={{ opacity: 0, y: -20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.95 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+              className="pointer-events-auto bg-white/95 backdrop-blur-md border border-[#f0f0ed] shadow-[0_10px_30px_rgba(8,8,8,0.12)] rounded-[20px] p-4 flex flex-col gap-3.5 select-none"
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#080808]/5 flex items-center justify-center shrink-0">
+                  {invite.isBatch ? (
+                    <svg className="w-5 h-5 stroke-[#080808] fill-none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5 stroke-[#080808] fill-none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                    </svg>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[10px] font-mono font-bold text-[#b8b8b0] uppercase tracking-wider">Incoming file</div>
+                  <div className="text-[13px] font-semibold text-black truncate mt-0.5">{invite.name}</div>
+                  <div className="text-[11px] font-mono font-light text-[#8a8a84] mt-0.5">
+                    From {invite.peerName} · {formatBytes(invite.size)}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => declineFileInvite(invite.fileId)}
+                  className="flex-1 py-2 rounded-xl border border-[#e4e4e0] text-[#8a8a84] hover:text-black hover:border-black active:scale-[0.98] text-[12px] font-medium transition-all"
+                >
+                  Decline
+                </button>
+                <button
+                  onClick={() => acceptFileInvite(invite.fileId)}
+                  className="flex-1 py-2 bg-[#080808] hover:bg-black text-white active:scale-[0.98] text-[12px] font-medium transition-all shadow-sm"
+                >
+                  Accept
+                </button>
+              </div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

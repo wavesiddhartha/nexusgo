@@ -132,6 +132,7 @@ export type ManagerEvent =
   | { type: 'group-call-leave';    roomId: string; leaverId: string }
   | { type: 'reaction';            peerId: string; msgId: string; emoji: string }
   | { type: 'group-invite-received'; roomId: string; roomName: string }
+  | { type: 'file-invite';         fileId: string; name: string; size: number; peerName: string; peerId: string; isBatch: boolean }
   | { type: 'ws-connected' }
   | { type: 'ws-disconnected' };
 
@@ -208,6 +209,38 @@ export class WebRTCManager {
           }
         } catch {}
       }).catch(() => {});
+    }
+  }
+
+  public pendingAllows: Map<string, (allow: boolean) => void> = new Map();
+
+  private promptFileAccept(
+    peerId: string,
+    fileId: string,
+    name: string,
+    size: number,
+    isBatch: boolean
+  ): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      this.pendingAllows.set(fileId, resolve);
+      const peer = this.peers.get(peerId);
+      this.emit({
+        type: 'file-invite',
+        fileId,
+        name,
+        size,
+        peerName: peer?.info.name ?? 'Someone',
+        peerId,
+        isBatch,
+      });
+    });
+  }
+
+  public resolveFileInvite(fileId: string, accept: boolean) {
+    const cb = this.pendingAllows.get(fileId);
+    if (cb) {
+      cb(accept);
+      this.pendingAllows.delete(fileId);
     }
   }
 
@@ -987,7 +1020,7 @@ export class WebRTCManager {
 
       case 'batch-meta': {
         const startBatch = async () => {
-          const accept = window.confirm(`${conn.info.name} wants to send you a batch of ${msg.totalFiles} files (${formatBytes(msg.totalSize)}).\n\nSelect OK to save automatically (supports 100GB+ files, direct fast transfer!)\nSelect Cancel to skip`);
+          const accept = await this.promptFileAccept(pid, msg.batchId, `Batch (${msg.totalFiles} files)`, msg.totalSize, true);
           if (!accept) return;
 
           if ('showDirectoryPicker' in window) {
@@ -1101,22 +1134,8 @@ export class WebRTCManager {
 
           // 2. If NOT part of a batch, prompt user
           if (!msg.batchId && !conn.directoryHandle) {
-            const accept = window.confirm(`${conn.info.name} wants to send you a file:\n"${msg.name}" (${formatBytes(msg.size)})\n\nSelect OK to save automatically (supports 100GB+ files, direct fast transfer!)\nSelect Cancel to skip`);
+            const accept = await this.promptFileAccept(pid, msg.fileId, msg.name, msg.size, false);
             if (!accept) return;
-
-            if ('showDirectoryPicker' in window) {
-              const selectDir = window.confirm("Would you like to select a directory to auto-save this and all subsequent files from this peer?");
-              if (selectDir) {
-                try {
-                  const handle = await (window as any).showDirectoryPicker();
-                  conn.directoryHandle = handle;
-                  const fileHandle = await handle.getFileHandle(sanitizedName, { create: true });
-                  writableStream = await fileHandle.createWritable();
-                } catch (err) {
-                  console.warn("Directory picker cancelled or failed, using Origin Private File System fallback");
-                }
-              }
-            }
           }
 
           // 3. Fallback to Origin Private File System (OPFS) for zero-memory streaming if directoryPicker wasn't chosen or supported

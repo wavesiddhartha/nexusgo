@@ -62,6 +62,9 @@ interface State {
 
   // Stats
   stats: { msgsSent: number; filesShared: number; bytesShared: number; callsTotal: number };
+
+  // File Invites
+  fileInvites: Record<string, { fileId: string; name: string; size: number; peerName: string; peerId: string; isBatch: boolean }>;
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────────
@@ -92,6 +95,8 @@ interface Actions {
   enablePush:       () => Promise<boolean>;
   toggleSounds:     () => void;
   togglePrivacy:    () => void;
+  acceptFileInvite:  (fileId: string) => void;
+  declineFileInvite: (fileId: string) => void;
 }
 
 type NexusState = State & Actions;
@@ -109,6 +114,7 @@ export const useNexusStore = create<NexusState>()(
         soundsEnabled: true, privacyMode: false,
         activeScreen: 'discover', selectedPeerId: null,
         stats: { msgsSent: 0, filesShared: 0, bytesShared: 0, callsTotal: 0 },
+        fileInvites: {},
 
         // ── Init ────────────────────────────────────────────────────────────
         initManager(url) {
@@ -304,6 +310,18 @@ export const useNexusStore = create<NexusState>()(
                   description: "Open the Groups tab to see the chat."
                 });
                 break;
+              case 'file-invite':
+                set(s => {
+                  s.fileInvites[ev.fileId] = {
+                    fileId: ev.fileId,
+                    name: ev.name,
+                    size: ev.size,
+                    peerName: ev.peerName,
+                    peerId: ev.peerId,
+                    isBatch: ev.isBatch,
+                  };
+                });
+                break;
             }
           });
 
@@ -344,6 +362,23 @@ export const useNexusStore = create<NexusState>()(
             });
             if (get().soundsEnabled) playSentSound();
           } catch (e) { console.error('[store] sendMessage', e); }
+        },
+
+        acceptFileInvite(fileId) {
+          const invite = get().fileInvites[fileId];
+          if (!invite) return;
+          get().manager?.resolveFileInvite(fileId, true);
+          set(s => { delete s.fileInvites[fileId]; });
+          if (get().soundsEnabled) {
+            playTransferStartSound();
+          }
+        },
+
+        declineFileInvite(fileId) {
+          const invite = get().fileInvites[fileId];
+          if (!invite) return;
+          get().manager?.resolveFileInvite(fileId, false);
+          set(s => { delete s.fileInvites[fileId]; });
         },
 
         async sendFile(peerId, filesOrFile) {
